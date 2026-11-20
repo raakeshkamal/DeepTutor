@@ -18,7 +18,7 @@ class TurnContextAssembler:
         if tutoring:
             from deeptutor.capabilities.mastery.memory import MasteryContextBuilder
 
-            return MasteryContextBuilder(self.store)
+            return MasteryContextBuilder(self.store, defer_summary=True)
         from deeptutor.services.session.context_builder import ContextBuilder
 
         return ContextBuilder(self.store)

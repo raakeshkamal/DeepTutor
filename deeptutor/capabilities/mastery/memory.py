@@ -6,8 +6,10 @@ original transcript and successful summary watermark; read_source owns recall.
 
 from __future__ import annotations
 
+import asyncio
 from collections import OrderedDict
 import json
+import logging
 import time
 from typing import Any
 
@@ -31,6 +33,9 @@ from deeptutor.services.session.model_history import (
     replay_history,
     summary_snapshot,
 )
+from deeptutor.services.session.scope import StoreScope, store_scope
+
+logger = logging.getLogger(__name__)
 
 _SECTIONS = ("learner_state", "preferences", "open_items", "teaching_history", "source_anchors")
 
@@ -148,6 +153,36 @@ def _memory_tokens(messages, summary):
 class MasteryContextBuilder(ContextBuilder):
     """A cost-sized history plan, not a percentage of a huge model window."""
 
+    # Keep one task alive per workspace and session, even across turns.
+    _background: dict[tuple[StoreScope, str], asyncio.Task] = {}
+
+    def __init__(self, store, *, defer_summary: bool = False, **kwargs):
+        super().__init__(store, **kwargs)
+        self._defer_summary = defer_summary
+        self._summary_deferred = False
+
+    def _schedule_summary(self, session_id, leaf_message_id, kwargs):
+        key = (store_scope(self.store), session_id)
+        if key in self._background:
+            return  # A later turn picks up anything this update missed.
+        task = asyncio.create_task(
+            MasteryContextBuilder(self.store).build(
+                session_id=session_id,
+                leaf_message_id=leaf_message_id,
+                **{**kwargs, "on_event": None},
+            )
+        )
+        self._background[key] = task
+
+        def finished(done: asyncio.Task) -> None:
+            self._background.pop(key, None)
+            if not done.cancelled() and (error := done.exception()) is not None:
+                logger.warning(
+                    "Background tutoring memory update failed (%s)", type(error).__name__
+                )
+
+        task.add_done_callback(finished)
+
     def _history_budget(self, llm_config):
         return min(super()._history_budget(llm_config), 20_000)
 
@@ -202,6 +237,7 @@ class MasteryContextBuilder(ContextBuilder):
         return older[:folded], older[folded:] + recent
 
     async def build(self, *, session_id, leaf_message_id=None, **kwargs):
+        self._summary_deferred = False
         # Switching models invalidates any truncation backoff for the old one.
         self._backoff_model = str(getattr(kwargs.get("llm_config"), "model", "") or "")
         self._fold_budget = self._history_budget(kwargs.get("llm_config"))
@@ -255,6 +291,8 @@ class MasteryContextBuilder(ContextBuilder):
             result.context_text = build_history_text(result.conversation_history)
             result.token_count = _memory_tokens(result.model_history, summary)
         super()._check_history_budget(result.token_count, result.budget)
+        if self._summary_deferred:
+            self._schedule_summary(session_id, leaf_message_id, kwargs)
         return result
 
     def _check_history_budget(self, token_count: int, budget: int) -> None:
@@ -285,6 +323,10 @@ class MasteryContextBuilder(ContextBuilder):
         )
 
     async def _summarize(self, *, replay_request=None, source_text, summary_budget, **kwargs):
+        if self._defer_summary:
+            # An empty result tells ContextBuilder to keep the saved memory.
+            self._summary_deferred = not self._fold_skipped
+            return "", []
         if getattr(self, "_fold_skipped", False):
             # Sending the exchange whole would exceed the plan, and splitting it
             # would cut tool-call/result pairs. The answer reads it through

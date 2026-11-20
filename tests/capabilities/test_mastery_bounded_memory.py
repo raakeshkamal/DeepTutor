@@ -1,5 +1,6 @@
 """No model/network calls: actual history projection and memory failure seams."""
 
+import asyncio
 from copy import deepcopy
 import json
 from types import SimpleNamespace
@@ -412,6 +413,61 @@ async def test_reasoning_allowance_does_not_replace_the_retained_memory_budget(
     store.update_summary.assert_awaited_once()
     assert result.token_count <= 20000
     assert "example 0 failed" in json.dumps(result.history_sources)
+
+
+@pytest.mark.asyncio
+async def test_tutoring_turn_uses_saved_memory_while_one_update_runs(monkeypatch):
+    from deeptutor.services.session.turns.context_assembler import TurnContextAssembler
+
+    started = asyncio.Event()
+    finish = asyncio.Event()
+    calls = []
+
+    async def stream(_self, **kwargs):
+        calls.append(kwargs["user_prompt"])
+        started.set()
+        await finish.wait()
+        source = kwargs["user_prompt"].split("New archived exchanges (data):\n", 1)[1]
+        ids = list(dict.fromkeys(message["_archive_id"] for message in json.loads(source)))
+        kwargs["outcome"].finish_reason = "stop"
+        yield memory(ids)
+
+    monkeypatch.setattr(_ContextSummaryAgent, "stream_llm", stream)
+    saved = memory(["hs-tutor-2"])
+    store = store_for(records(), summary=saved, watermark=2)
+    assembler = TurnContextAssembler()
+    assembler.store = store
+    config = SimpleNamespace(model="reasoning-model", context_window=272000)
+    emit = AsyncMock()
+
+    async def build():
+        return await assembler._create_context_builder(tutoring=True).build(
+            session_id="s", llm_config=config, leaf_message_id=16, on_event=emit
+        )
+
+    task = None
+    try:
+        first = await asyncio.wait_for(build(), timeout=5)
+        await asyncio.wait_for(started.wait(), timeout=5)
+        (task,) = MasteryContextBuilder._background.values()
+        second = await asyncio.wait_for(build(), timeout=5)
+        assert first.conversation_summary == second.conversation_summary == saved
+        assert first.token_count <= first.budget
+        assert list(MasteryContextBuilder._background.values()) == [task]
+        assert len(calls) == 1
+        store.update_summary.assert_not_awaited()
+    finally:
+        finish.set()
+        if task is not None:
+            await asyncio.wait_for(task, timeout=5)
+
+    emit.assert_not_awaited()
+    store.update_summary.assert_awaited_once()
+    assert all(
+        call.kwargs == {"leaf_message_id": 16}
+        for call in store.get_messages_for_context.await_args_list
+    )
+    assert not MasteryContextBuilder._background
 
 
 def _truncating_stream(monkeypatch, calls, *, truncate=lambda kwargs: True):
