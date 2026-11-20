@@ -15,6 +15,8 @@ import unicodedata
 
 from pydantic import BaseModel, ConfigDict, Field
 
+QUALITATIVE_ANSWER_CHAR_LIMIT = 10_000
+
 # Only strip known table layout tags. A generic <...> pattern also consumes
 # mathematical inequalities, and Markdown characters may be math operators.
 _TABLE_MARKUP = re.compile(

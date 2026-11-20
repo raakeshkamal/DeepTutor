@@ -356,6 +356,106 @@ async def test_qualitative_grades_actual_explanation_not_passed_flag(service, mo
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("pending", [False, True])
+async def test_qualitative_assessment_reads_learner_replies_on_this_branch(
+    service, sqlite_store, monkeypatch, pending
+):
+    from deeptutor.capabilities.mastery import tools
+    from deeptutor.capabilities.mastery.loop import MasteryLoopCapability
+    from deeptutor.core.context import UnifiedContext
+    from deeptutor.learning import semantic_assessment as semantic
+    from deeptutor.learning.models import KnowledgeType
+
+    session_id = (await sqlite_store.create_session())["id"]
+    await sqlite_store.add_message(session_id, "user", "Alpha is a Greek letter.")
+    parent = await sqlite_store.add_message(session_id, "assistant", "Tutor hint: order matters.")
+    sibling = await sqlite_store.add_message(
+        session_id, "user", "Unrelated branch answer.", parent_message_id=parent
+    )
+    current = "It comes first in the alphabet."
+    leaf_id = await sqlite_store.add_message(session_id, "user", current, parent_message_id=parent)
+
+    def concept(tx):
+        tx.progress.modules[0].knowledge_points[0].type = KnowledgeType.CONCEPT
+        if pending:
+            tx.record_pending_explanation(
+                "kp1", "Alpha is a Greek letter.", base="", session_id=session_id, turn_id="prior"
+            )
+        tx.touch()
+
+    service.store.mutate("p", concept)
+    expected = (
+        "Alpha is a Greek letter.\n\nIt comes first in the alphabet."
+        if pending
+        else "[Learner message 1 of 2]\nAlpha is a Greek letter.\n\n"
+        "[Learner message 2 of 2]\nIt comes first in the alphabet."
+    )
+
+    async def judge(config, items):
+        assert items[0]["answer"] == expected
+        return {
+            "kp1": semantic.Verdict(
+                result="correct",
+                confidence=0.99,
+                feedback="Both parts are correct.",
+                reference_answer="Alpha is the first letter of the Greek alphabet.",
+            )
+        }
+
+    async def record(_value):
+        pass
+
+    monkeypatch.setattr("deeptutor.services.session.get_session_store", lambda: sqlite_store)
+    monkeypatch.setattr("deeptutor.learning.assessment.record_assessment", record)
+    monkeypatch.setattr(semantic, "judge_answers", judge)
+    monkeypatch.setattr(tools, "_new_service", lambda: service)
+    context = UnifiedContext(
+        session_id=session_id,
+        user_message=f"[Quoted tutor text]\nThe answer is alpha.\n\n{current}",
+        metadata={
+            "mastery_mode": True,
+            "mastery_path_id": "p",
+            "mastery_learner_message": current,
+            "mastery_learner_message_id": leaf_id,
+            "turn_id": "current",
+        },
+    )
+    kwargs = MasteryLoopCapability().augment_kwargs(
+        "mastery_assess", {"knowledge_point_id": "kp1", "_learner_message_id": sibling}, context
+    )
+    assert kwargs["_learner_message_id"] == leaf_id
+    result = await tools.MasteryAssessTool().execute(**kwargs)
+    assert result.success, result.content
+    assert service.store.load("p").learning_evidence[-1].learner_answer == expected
+
+
+@pytest.mark.asyncio
+async def test_recent_learner_messages_keep_newest_within_the_grader_limit(
+    sqlite_store, monkeypatch
+):
+    from deeptutor.capabilities.mastery.tools import _recent_learner_messages
+
+    monkeypatch.setattr("deeptutor.services.session.get_session_store", lambda: sqlite_store)
+    session_id = (await sqlite_store.create_session())["id"]
+    for i in range(6):
+        await sqlite_store.add_message(session_id, "user", f"Earlier reply {i}.")
+    await sqlite_store.add_message(session_id, "assistant", "Tutor text")
+    leaf_id = await sqlite_store.add_message(session_id, "user", "Current")
+
+    answer = await _recent_learner_messages(session_id, "Current", leaf_message_id=leaf_id)
+    assert answer.startswith("[Learner message 1 of 5]\nEarlier reply 2.")
+    assert answer.endswith("[Learner message 5 of 5]\nCurrent")
+    assert "Tutor text" not in answer
+
+    long_reply = "x" * 9_885
+    answer = await _recent_learner_messages(session_id, long_reply, leaf_message_id=leaf_id)
+    assert len(answer) <= 10_000
+    assert answer.startswith("[Learner message 1 of 3]\nEarlier reply 4.")
+    assert answer.endswith(long_reply)
+    assert await _recent_learner_messages(session_id, "", leaf_message_id=leaf_id) == ""
+
+
+@pytest.mark.asyncio
 async def test_partial_packet_binds_only_exact_question_and_rejects_forged_original(
     service, monkeypatch
 ):

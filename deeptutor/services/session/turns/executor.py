@@ -1054,6 +1054,9 @@ class TurnExecutor:
                     "learner_profile_prompt": learner_profile_prompt,
                     "mastery_path_id": _mastery_path_id(payload.get("mastery_path_id")),
                     "mastery_mode": workspace_mode == WORKSPACE_MODE_MASTERY,
+                    "mastery_learner_message": raw_user_content,
+                    "mastery_learner_message_id": new_user_message_id
+                    or (payload.get("regenerated_from_message_id") if is_regenerate else None),
                     # What this conversation is doing. It picks the tutor's
                     # prompt block and decides which tools will run, so it has
                     # to reach the turn context, not just the payload. Raw:

@@ -236,6 +236,12 @@ class MasteryLoopCapability:
                 # A replacement needs a quote from the actual current learner
                 # request, not a model-supplied claim about their intention.
                 updated["_learner_message"] = context.user_message or ""
+            if tool_name == "mastery_assess":
+                # Do not grade quotes or attachments prefixed to the model prompt.
+                updated["_learner_message"] = context.metadata.get(
+                    "mastery_learner_message", context.user_message or ""
+                )
+                updated["_learner_message_id"] = context.metadata.get("mastery_learner_message_id")
             if tool_name == "mastery_prepare_lesson":
                 updated["_language"] = context.language
                 from deeptutor.learning.policy import next_objective

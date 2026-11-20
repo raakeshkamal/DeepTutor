@@ -369,6 +369,53 @@ async def _resolve_pending_choice(
     return options, resolve_answer(pending.expected_answer, options) or pending.expected_answer
 
 
+_ASSESSED_LEARNER_MESSAGES = 5
+
+
+async def _recent_learner_messages(session_id: str, current: str, *, leaf_message_id) -> str:
+    """Join up to five actual learner replies on the current branch for grading."""
+    if not session_id or not current or leaf_message_id is None:
+        return current
+
+    from deeptutor.learning.semantic_assessment import QUALITATIVE_ANSWER_CHAR_LIMIT
+    from deeptutor.services.session import get_session_store
+
+    if len(current) >= QUALITATIVE_ANSWER_CHAR_LIMIT:
+        return current
+    try:
+        rows = await get_session_store().get_messages_for_context(
+            session_id, leaf_message_id=leaf_message_id
+        )
+    except Exception as exc:
+        logger.warning("Failed to read recent learner messages (%s)", type(exc).__name__)
+        return current
+
+    # The linear storage backend can return rows after the requested message.
+    # Stop at the persisted user message; never guess the branch or leaf.
+    leaf = next(
+        (i for i, row in enumerate(rows) if str(row.get("id")) == str(leaf_message_id)), None
+    )
+    if leaf is None or rows[leaf].get("role") != "user":
+        return current
+
+    texts = [current]
+    for row in reversed(rows[:leaf]):
+        text = row.get("content")
+        if row.get("role") == "user" and isinstance(text, str) and (text := text.strip()):
+            texts.append(text)
+            if len(texts) == _ASSESSED_LEARNER_MESSAGES:
+                break
+    texts.reverse()
+    while len(texts) > 1:
+        bundle = "\n\n".join(
+            f"[Learner message {i} of {len(texts)}]\n{text}" for i, text in enumerate(texts, 1)
+        )
+        if len(bundle) <= QUALITATIVE_ANSWER_CHAR_LIMIT:
+            return bundle
+        texts.pop(0)
+    return current
+
+
 async def _sync_mastery_attempt_to_question_bank(
     *,
     path_id: str,
@@ -2134,13 +2181,18 @@ class MasteryAssessTool(BaseTool):
         from deeptutor.learning.review_strategy import scheduler_for_path
         from deeptutor.learning.service import MasteryInteractionError
 
+        session_id = _resolve_session_id(kwargs)
+        recent_answer = await _recent_learner_messages(
+            session_id, learner_answer, leaf_message_id=kwargs.get("_learner_message_id")
+        )
         try:
             progress, receipt = await service.assess_qualitative_semantic(
                 path_id,
                 kp_id,
                 learner_answer=learner_answer,
+                recent_learner_answer=recent_answer,
                 scheduler=scheduler_for_path(service.store, path_id),
-                session_id=_resolve_session_id(kwargs),
+                session_id=session_id,
                 turn_id=_resolve_turn_id(kwargs),
             )
         except MasteryInteractionError as exc:

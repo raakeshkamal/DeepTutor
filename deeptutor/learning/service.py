@@ -3065,7 +3065,7 @@ class LearningService:
         self._store.save(progress)
 
     async def assess_qualitative_semantic(
-        self, book_id, kp_id, *, learner_answer, config=None, **kwargs
+        self, book_id, kp_id, *, learner_answer, recent_learner_answer="", config=None, **kwargs
     ):
         from deeptutor.learning import semantic_assessment as semantic
         from deeptutor.learning.lesson_evidence import (
@@ -3077,9 +3077,10 @@ class LearningService:
         from deeptutor.learning.policy import find_knowledge_point
 
         answer = str(learner_answer or "").strip()
-        if not answer or len(answer) > 10000:
+        limit = semantic.QUALITATIVE_ANSWER_CHAR_LIMIT
+        if not answer or len(answer) > limit:
             raise MasteryInteractionError(
-                "Assessment needs the actual learner explanation, at most 10000 characters."
+                f"Assessment needs the actual learner explanation, at most {limit} characters."
             )
         progress = self._store.load(book_id)
         kp, module_id, _ = find_knowledge_point(progress, kp_id)
@@ -3110,10 +3111,14 @@ class LearningService:
                 book_id,
                 lambda tx: tx.pending_explanation(kp_id, session_id=session_id, turn_id=turn_id),
             )
-        if pending and len(pending) + len(answer) + 2 <= 10000:
+        if pending and len(pending) + len(answer) + 2 <= limit:
             answer = f"{pending}\n\n{answer}"
         else:
             pending = ""
+            # Without an objective-specific continuation, include nearby learner
+            # replies that have not necessarily gone through the grader yet.
+            if recent_learner_answer and len(recent_learner_answer) <= limit:
+                answer = recent_learner_answer
         evidence = assessment_evidence(progress, kp_id)
         try:
             validate_evidence(self._store, progress, kp_id, evidence)
