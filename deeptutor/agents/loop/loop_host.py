@@ -303,9 +303,11 @@ class AgentLoopHost:
             instruction = self.pipeline._t(
                 "loop.finish_empty_nudge",
                 default=(
-                    "Your previous round produced only internal reasoning — no tool call and no "
-                    "user-facing answer. Continue now: either call the tools to execute your plan, "
-                    "or write the final user-facing answer directly."
+                    "Your previous round produced no tool call and no new text. Everything you "
+                    "already wrote this turn is on the user's screen; do not repeat or rewrite it. "
+                    "If something is still missing, call the tools or continue from where you left "
+                    "off. If your earlier text already answers the user, reply with one short "
+                    "closing sentence."
                 ),
             )
         self.loop._append_loop_instruction(self.messages, instruction)

@@ -839,7 +839,9 @@ async def test_empty_finish_gets_one_nudge_then_recovers(
     # the nudge instruction as the trailing user message.
     second_round = client.calls[1]["messages"]
     assert second_round[-1]["role"] == "user"
-    assert "internal reasoning" in second_round[-1]["content"]
+    nudge = " ".join(second_round[-1]["content"].split())
+    assert "do not repeat or rewrite it" in nudge
+    assert "one short closing sentence" in nudge
     assert any(
         m.get("role") == "assistant" and "whole script" in str(m.get("content"))
         for m in second_round
@@ -893,7 +895,7 @@ async def test_empty_round_nudge_keeps_multimodal_user_parts(
     assert isinstance(durable, list)
     assert [part["type"] for part in durable] == ["text", "image_url"]
     assert durable[0]["text"].startswith("[Attached Documents]\nQuestion sheet")
-    assert "internal reasoning" in durable[0]["text"]
+    assert "no tool call and no new text" in durable[0]["text"]
     assert durable[1] == image
     # The round the provider receives still carries the image as an image.
     wire = client.calls[1]["messages"][-1]["content"]
@@ -927,7 +929,7 @@ async def test_pure_image_message_gets_its_own_directive_part(
 
     durable = messages[0]["content"]
     assert [part["type"] for part in durable] == ["image_url", "text"]
-    assert "internal reasoning" in durable[1]["text"]
+    assert "no tool call and no new text" in durable[1]["text"]
     assert durable[0] == image
 
 

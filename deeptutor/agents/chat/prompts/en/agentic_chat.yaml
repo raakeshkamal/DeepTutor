@@ -143,9 +143,11 @@ loop:
     Good enough is required; optimal is not. Do not redesign or second-guess what
     you had already settled on.
   finish_empty_nudge: |-
-    Your previous round produced only internal reasoning — no tool call and
-    no user-facing answer. Continue now: either call the tools to execute
-    your plan, or write the final user-facing answer directly.
+    Your previous round produced no tool call and no new text. Everything you
+    already wrote this turn is on the user's screen; do not repeat or rewrite
+    it. If something is still missing, call the tools or continue from where
+    you left off. If your earlier text already answers the user, reply with
+    one short closing sentence.
   repeat_reasoning_only_nudge: |-
     Your previous rounds produced only internal reasoning — no tool call and
     no user-facing answer. Do not reason further. Select the most likely next
