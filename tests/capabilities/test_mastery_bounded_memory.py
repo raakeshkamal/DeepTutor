@@ -387,17 +387,17 @@ async def test_trailing_memory_snapshot_counts_toward_tutoring_budget():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("configured_limit, saved", [(8192, True), (3000, False)])
+@pytest.mark.parametrize("configured_limit", [4096, 8192])
 async def test_reasoning_allowance_does_not_replace_the_retained_memory_budget(
-    monkeypatch, configured_limit, saved
+    monkeypatch, configured_limit
 ):
-    """A 4k combined reasoning/output cap repeatedly cut off live JSON memory."""
+    """The chat output default must not cap the memory writer."""
     from deeptutor.capabilities.mastery.memory import archive_id
     from deeptutor.services.session.model_history import history_groups
 
     async def stream(_self, **kwargs):
-        kwargs["outcome"].finish_reason = "stop" if kwargs["max_tokens"] >= 5000 else "max_tokens"
-        assert kwargs["max_tokens"] <= configured_limit
+        assert kwargs["max_tokens"] == 128_000
+        kwargs["outcome"].finish_reason = "stop"
         yield memory([archive_id(g) for g in history_groups(builder._summary_rows)])
 
     monkeypatch.setattr(_ContextSummaryAgent, "stream_llm", stream)
@@ -409,7 +409,7 @@ async def test_reasoning_allowance_does_not_replace_the_retained_memory_budget(
             model="reasoning-model", context_window=272000, max_tokens=configured_limit
         ),
     )
-    assert store.update_summary.await_count == int(saved)
+    store.update_summary.assert_awaited_once()
     assert result.token_count <= 20000
     assert "example 0 failed" in json.dumps(result.history_sources)
 
@@ -456,21 +456,25 @@ async def test_a_truncated_memory_is_not_retried_on_every_turn(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_raising_the_output_limit_retries_without_waiting_out_the_backoff(monkeypatch):
+async def test_changing_the_summary_ceiling_retries_without_waiting_out_backoff(monkeypatch):
+    from deeptutor.capabilities.mastery import memory as memory_module
+
     calls = []
     holder = _truncating_stream(
         monkeypatch, calls, truncate=lambda kwargs: kwargs["max_tokens"] < 5000
     )
     store = store_for(records())
 
-    await _build(holder, store, max_tokens=4096)
-    await _build(holder, store, max_tokens=4096)
-    assert len(calls) == 1
+    monkeypatch.setattr(memory_module, "SUMMARY_GENERATION_CEILING", 4096)
+    await _build(holder, store)
+    await _build(holder, store)
+    assert calls == [4096]
     store.update_summary.assert_not_awaited()
 
-    await _build(holder, store, max_tokens=8192)
-    assert len(calls) == 2
-    assert store.update_summary.await_count == 1
+    monkeypatch.setattr(memory_module, "SUMMARY_GENERATION_CEILING", 128_000)
+    await _build(holder, store)
+    assert calls == [4096, 128_000]
+    store.update_summary.assert_awaited_once()
 
 
 @pytest.mark.asyncio

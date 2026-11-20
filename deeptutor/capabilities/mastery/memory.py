@@ -33,6 +33,11 @@ from deeptutor.services.session.model_history import (
 )
 
 _SECTIONS = ("learner_state", "preferences", "open_items", "teaching_history", "source_anchors")
+
+# Hidden reasoning and the JSON reply share this allowance. The summary
+# instruction and validation below still bound the retained memory.
+SUMMARY_GENERATION_CEILING = 128_000
+
 MEMORY_NOTICE = (
     "\n\n[Tutoring memory and exact-history recall]\n"
     "A conversation summary is learner memory, NOT authoritative progress or source evidence. "
@@ -154,8 +159,7 @@ class MasteryContextBuilder(ContextBuilder):
         if outcome.truncated:
             raise MemoryTruncated(
                 "Tutoring memory: provider truncated the response at its "
-                f"{getattr(self, '_generation_limit', 8192)}-token output limit; "
-                "raise the model's max_tokens"
+                f"{SUMMARY_GENERATION_CEILING}-token output allowance"
             )
         return summary
 
@@ -198,14 +202,7 @@ class MasteryContextBuilder(ContextBuilder):
         return older[:folded], older[folded:] + recent
 
     async def build(self, *, session_id, leaf_message_id=None, **kwargs):
-        # Retained memory and generation are different budgets: reasoning
-        # providers count hidden tokens in max_tokens too (#1926).
-        configured_limit = getattr(kwargs.get("llm_config"), "max_tokens", None)
-        self._generation_limit = (
-            configured_limit if type(configured_limit) is int and configured_limit > 0 else 8192
-        )
-        # Changing the model or its max_tokens changes the key, so a fix on the
-        # user's side takes effect on the next turn without waiting out the backoff.
+        # Switching models invalidates any truncation backoff for the old one.
         self._backoff_model = str(getattr(kwargs.get("llm_config"), "model", "") or "")
         self._fold_budget = self._history_budget(kwargs.get("llm_config"))
         self._fold_skipped = False
@@ -305,7 +302,7 @@ class MasteryContextBuilder(ContextBuilder):
         backoff_key = (
             str(kwargs.get("session_id") or ""),
             getattr(self, "_backoff_model", ""),
-            getattr(self, "_generation_limit", 8192),
+            SUMMARY_GENERATION_CEILING,
         )
         if _backoff_active(backoff_key):
             # The same call just came back truncated; skip it and let the
@@ -317,9 +314,7 @@ class MasteryContextBuilder(ContextBuilder):
             summary, events = await super()._summarize(
                 source_text=material,
                 summary_budget=summary_budget,
-                generation_budget=min(
-                    summary_budget * 2, 8192, getattr(self, "_generation_limit", 8192)
-                ),
+                generation_budget=SUMMARY_GENERATION_CEILING,
                 replay_request=None,
                 **kwargs,
             )
@@ -357,7 +352,7 @@ class MasteryContextBuilder(ContextBuilder):
             if not expected <= referenced:
                 raise ValueError("Archived exchanges lack retained learning notes")
             result = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
-            # 4k is the generation target, not proof of truncation. Allow up
+            # The 4k summary budget is not a transport limit. Allow up
             # to 6k of complete validated notes; the 12k recent-history
             # allocation still fits the 20k history plan. OAuth providers may
             # ignore max_tokens, so the compact payload has a hard ceiling.
