@@ -1,8 +1,9 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { MasteryQuestionCard } from "@/components/chat/home/MasteryQuestionCard";
+import { AppShellProvider } from "@/context/AppShellContext";
 import { ChatMessageList } from "@/features/chat/messages";
 import type { StreamEvent } from "@/features/chat/model/protocol";
 import { initI18n } from "@/i18n/init";
@@ -42,6 +43,27 @@ const event = (payload: Record<string, unknown>): StreamEvent => ({
 const question = () => extractMasteryQuestion([event({ mastery_question: group })])!;
 
 describe("grouped mastery assessment", () => {
+  it("renders code blocks in the shared prompt and in a subquestion", async () => {
+    const sharedCode = "let city = String::from(\"Oslo\");\nlet label = city;";
+    const partCode = "println!(\"{city}\");\nprintln!(\"{label}\");";
+    const groupedQuestion = extractMasteryQuestion([event({ mastery_question: {
+      ...group,
+      prompt: `Use this example for both parts.\n\n\`\`\`\n${sharedCode}\n\`\`\``,
+      questions: [
+        { ...leaf("part-a"), prompt: `What happens here?\n\n\`\`\`\n${partCode}\n\`\`\`` },
+        leaf("part-b"),
+      ],
+    } })])!;
+    const { container } = render(<MasteryQuestionCard question={groupedQuestion}
+      grade={null} answered={false} submittedAnswer="" onSubmit={() => true} />,
+    { wrapper: AppShellProvider });
+
+    await waitFor(() => {
+      expect(Array.from(container.querySelectorAll("pre"), (block) => block.textContent?.trimEnd()))
+        .toEqual([sharedCode, partCode]);
+    });
+  });
+
   it("reopens a single clarification reply after a grading failure without losing its text", async () => {
     const user = userEvent.setup();
     const posed = { id: 1, role: "assistant" as const, content: "", parentMessageId: null,

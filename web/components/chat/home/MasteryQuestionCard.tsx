@@ -23,6 +23,7 @@ import { useTranslation } from "react-i18next";
 
 import { LearningText } from "@/components/common/LearningText";
 import InlineMarkdown from "@/components/common/InlineMarkdown";
+import MarkdownRenderer from "@/components/common/MarkdownRenderer";
 import { useCardSubmission } from "@/hooks/use-card-submission";
 import { REPLY_NOT_DELIVERED } from "@/lib/ask-user-state";
 import {
@@ -214,9 +215,13 @@ const SingleMasteryQuestionCard = memo(function SingleMasteryQuestionCard({
         </div>
       ) : null}
 
-      <div className="mt-0.5 font-serif text-[15.5px] font-semibold leading-relaxed tracking-[-0.01em] text-[var(--foreground)]">
-        <LearningText size={15.5}><InlineMarkdown content={question.prompt} /></LearningText>
-      </div>
+      <MarkdownRenderer
+        content={question.prompt}
+        variant="compact"
+        learningTextSize={15.5}
+        className="mt-0.5 font-semibold leading-relaxed tracking-[-0.01em] text-[var(--foreground)]"
+        allowHtml={false}
+      />
       {question.visual && <div className="mt-3 space-y-2 text-xs text-[var(--muted-foreground)]">
         <p>{grade?.independent === false || question.visual.hintsUsed || question.visual.answerCues !== "none" ? t("Guided visual practice — this does not demonstrate independent mastery.") : t("Visual practice with the original source.")}</p>
         {sourceUnavailable && <p role="alert">{t("The source image is unavailable. Open the source or ask your tutor to inspect its current version.")}</p>}
@@ -406,7 +411,15 @@ function GroupedMasteryQuestionCard({
   };
 
   return <section className="my-4" aria-label={question.prompt}>
-    {question.prompt && <div className="font-serif font-semibold"><LearningText size={16}><InlineMarkdown content={question.prompt} /></LearningText></div>}
+    {question.prompt && (
+      <MarkdownRenderer
+        content={question.prompt}
+        variant="compact"
+        learningTextSize={16}
+        className="font-semibold"
+        allowHtml={false}
+      />
+    )}
     {questions.map((part) => {
       const partGrade = grade?.results?.find((result) => result.questionId === part.questionId) ?? null;
       return <SingleMasteryQuestionCard key={part.questionId} question={part} grade={partGrade}

@@ -23,6 +23,7 @@ import re
 from typing import TYPE_CHECKING, Any
 import uuid
 
+from deeptutor.capabilities.mastery.choice_format import validate_choice_format
 from deeptutor.capabilities.mastery.choices import (
     canonical_labels,
     has_option_bodies,
@@ -35,6 +36,7 @@ from deeptutor.capabilities.mastery.choices import (
     resolve_choice_submission,
     strip_echoed_options,
 )
+from deeptutor.capabilities.mastery.code_question import CODE_TASKS, validate_code_question
 from deeptutor.capabilities.mastery.mode import (
     MODES,
     REVIEW,
@@ -1194,7 +1196,14 @@ class MasteryQuizTool(BaseTool):
                 "the next message and you grade it on the next turn with "
                 "mastery_grade. CONCEPT / DESIGN cards are practice only: their "
                 "qualitative gate still requires the learner's own explanation "
-                "assessed through mastery_assess; quiz correctness cannot open it."
+                "assessed through mastery_assess; quiz correctness cannot open it. "
+                "Code choices MUST be fenced and indented inside EACH options[].body, "
+                "not only in question. Unformatted code choices are rejected; correct "
+                "their formatting and retry this tool in the same turn. "
+                "Set code_task for code choice questions. For select_program, candidate "
+                "programs belong ONLY in options, never as a completed solution in question. "
+                "For predict_output, show the input program but not its output. For "
+                "debug_code, show faulty code but not its corrected solution."
             ),
             parameters=[
                 ToolParameter(
@@ -1219,9 +1228,30 @@ class MasteryQuizTool(BaseTool):
                         "list, so a stem that repeats them shows every choice "
                         "twice. Naming one option to ask about it is fine."
                         " Make the stem self-contained for later practice: include "
-                        "all required code, data, scenario details and diagrams "
-                        "(Markdown or Mermaid). Do not refer only to a figure or "
-                        "example in an earlier message."
+                        "required INPUT code, data, scenario details and diagrams "
+                        "(Markdown or Mermaid). Put multiline code and compiler "
+                        "output in fenced Markdown code blocks with real line "
+                        "breaks. Keep the question itself outside the block. "
+                        "Do not refer only to a figure or example in an earlier message. "
+                        "For code_task=select_program, put candidate programs only in "
+                        "options, not in this stem. For predict_output, do not include "
+                        "the evaluated output. For debug_code, do not show corrected "
+                        "solution code. Keep the answer and explanation private until grading."
+                    ),
+                ),
+                ToolParameter(
+                    name="code_task",
+                    type="string",
+                    required=False,
+                    enum=list(CODE_TASKS),
+                    description=(
+                        "Required for code choice questions; omit for non-code questions. "
+                        "select_program: choose a candidate program, with programs only in "
+                        "options. predict_output: show input code and ask for its output, "
+                        "without revealing that output. debug_code: show faulty input code "
+                        "and ask about the error or fix, without providing corrected code. "
+                        "Declare the actual task; do not change it to bypass validation. "
+                        "For grouped questions set this separately on each code question."
                     ),
                 ),
                 ToolParameter(
@@ -1255,8 +1285,13 @@ class MasteryQuizTool(BaseTool):
                         "Every option needs its own 'body': the card renders the "
                         "label itself, so a label with no answer text leaves the "
                         "learner nothing to read, and two options with the same "
-                        "body are unanswerable. Never pass options for "
-                        "'short'/'open'."
+                        "body are unanswerable. Code statements and programs in EACH "
+                        "body must use a closed fenced Markdown block with a language "
+                        "tag and real line breaks. Put programs on multiple indented "
+                        "lines, at most 120 columns per code line. Single backticks "
+                        "are only for short expressions or identifiers. The question's "
+                        "code fence does not format the options. Keep intentionally "
+                        "incorrect syntax unchanged. Never pass options for 'short'/'open'."
                     ),
                     required=False,
                     items={
@@ -1268,7 +1303,14 @@ class MasteryQuizTool(BaseTool):
                             },
                             "body": {
                                 "type": "string",
-                                "description": "The answer text this choice offers.",
+                                "description": (
+                                    "The answer text this choice offers. Code statements and "
+                                    "programs require fenced Markdown, a language tag, real "
+                                    "line breaks and indentation. Code lines must not exceed "
+                                    "120 columns. Do this for wrong choices too, preserving "
+                                    "their incorrect syntax. Example body:\n```rust\n"
+                                    'fn main() {\n    println!("hi");\n}\n```'
+                                ),
                             },
                         },
                         "required": ["label", "body"],
@@ -1390,6 +1432,7 @@ class MasteryQuizTool(BaseTool):
                 "difficulty",
                 "visual",
                 "questions",
+                "code_task",
                 "replace_question_id",
                 "replacement_request",
             }
@@ -1436,6 +1479,11 @@ class MasteryQuizTool(BaseTool):
                 return built
             pending, echoed_options, kp = built
         else:
+            if kwargs.get("code_task") is not None:
+                return ToolResult(
+                    content="For a questions group, set code_task on each code question, not the parent.",
+                    success=False,
+                )
             if not isinstance(raw_questions, list) or not 2 <= len(raw_questions) <= 4:
                 return ToolResult(
                     content="questions must contain two to four independent questions.",
@@ -1444,6 +1492,7 @@ class MasteryQuizTool(BaseTool):
             fields = {
                 "knowledge_point_id",
                 "question",
+                "code_task",
                 "expected_answer",
                 "question_type",
                 "options",
@@ -1478,7 +1527,11 @@ class MasteryQuizTool(BaseTool):
                         success=False,
                     )
                 built = await self._build_question(
-                    {**{key: value for key, value in kwargs.items() if key.startswith("_")}, **raw},
+                    {
+                        **{key: value for key, value in kwargs.items() if key.startswith("_")},
+                        **raw,
+                        "_mastery_group_prompt": str(kwargs.get("question") or ""),
+                    },
                     progress,
                 )
                 if isinstance(built, ToolResult):
@@ -1667,6 +1720,12 @@ class MasteryQuizTool(BaseTool):
         try:
             q_type, options, expected = _normalize_quiz_contract(
                 kwargs.get("question_type"), kwargs.get("options"), expected
+            )
+            validate_choice_format(options)
+            validate_code_question(
+                "\n\n".join(filter(None, [str(kwargs.get("_mastery_group_prompt") or ""), question])),
+                options,
+                kwargs.get("code_task"),
             )
         except ValueError as exc:
             return ToolResult(content=str(exc), success=False)

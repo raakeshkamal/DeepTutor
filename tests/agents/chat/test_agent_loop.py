@@ -1765,6 +1765,8 @@ async def test_choice_prose_does_not_trigger_repeated_model_calls(
         "tool_failure",
         "repeat",
         "selected_retry",
+        "selected_format",
+        "selected_leakage",
         "selected_failure",
         "selected_budget",
     ],
@@ -1846,6 +1848,29 @@ async def test_mastery_card_promise_repair_uses_real_question_tool(
         if repair == "tool_failure":
             script.append([_llm_chunk(content=promise, finish_reason="stop")])
     selected_quiz = repair.startswith("selected_")
+    invalid_quiz_args = {}
+    if repair in {"selected_format", "selected_leakage"}:
+        code = 'fn main() {\n    println!("hi");\n}'
+        quiz_args = {
+            **quiz_args,
+            "question": "Which program prints hi?",
+            "code_task": "select_program",
+            "options": [
+                {"label": "A", "body": f"```rust\n{code}\n```"},
+                {"label": "B", "body": "Neither program"},
+            ],
+        }
+        invalid_quiz_args = {
+            **quiz_args,
+            "options": [
+                {"label": "A", "body": code.replace("\n", " ")},
+                {"label": "B", "body": "Neither program"},
+            ],
+        }
+        if repair == "selected_leakage":
+            invalid_quiz_args = {
+                **quiz_args, "question": f"Which program prints hi?\n\n```rust\n{code}\n```"
+            }
     if selected_quiz:
         # No delivery keywords: a failed native tool call alone establishes
         # the obligation, and unrelated final prose must not erase it.
@@ -1853,7 +1878,7 @@ async def test_mastery_card_promise_repair_uses_real_question_tool(
         script = [
             [
                 _llm_chunk(
-                    tool_calls=[{"id": "bad-quiz", "name": "mastery_quiz", "arguments": "{}"}],
+                    tool_calls=[{"id": "bad-quiz", "name": "mastery_quiz", "arguments": json.dumps(invalid_quiz_args)}],
                     finish_reason="tool_calls",
                 )
             ],
@@ -1870,7 +1895,7 @@ async def test_mastery_card_promise_repair_uses_real_question_tool(
                     finish_reason="tool_calls",
                 )
             ]
-            if repair == "selected_retry"
+            if repair in {"selected_retry", "selected_format", "selected_leakage"}
             else [_llm_chunk(content=promise, finish_reason="stop")],
         ]
     if repair == "selected_budget":
@@ -1929,7 +1954,7 @@ async def test_mastery_card_promise_repair_uses_real_question_tool(
         assert "mastery_quiz" in correction["messages"][-1]["content"]
         assert any(s["function"]["name"] == "mastery_quiz" for s in correction["tools"])
         assert client.call_count == (3 if repair == "tool_failure" or selected_quiz else 2)
-    succeeded = repair in {"new", "existing", "selected_retry"}
+    succeeded = repair in {"new", "existing", "selected_retry", "selected_format", "selected_leakage"}
     assert _result(events).metadata["completed"] is succeeded
     if succeeded:
         assert len(cards) == 1
@@ -1937,6 +1962,10 @@ async def test_mastery_card_promise_repair_uses_real_question_tool(
         assert persisted is not None
         assert cards[0]["question_id"] == persisted.question_id
         assert cards[0]["prompt"] == quiz_args["question"]
+        if repair in {"selected_format", "selected_leakage"}:
+            assert persisted.choice_map[persisted.expected_answer] == quiz_args["options"][0]["body"]
+            assert len(registry.executed) == 2
+            assert any("Retry mastery_quiz" in str(call["messages"]) for call in client.calls[1:])
         if old_id:
             assert cards[0]["question_id"] == old_id
     else:

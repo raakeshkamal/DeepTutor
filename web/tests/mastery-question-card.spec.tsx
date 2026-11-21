@@ -1,8 +1,9 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { MasteryQuestionCard } from "@/components/chat/home/MasteryQuestionCard";
+import { AppShellProvider } from "@/context/AppShellContext";
 import { initI18n } from "@/i18n/init";
 import type { MasteryQuestion } from "@/lib/mastery-question";
 
@@ -21,6 +22,65 @@ const question = (overrides: Partial<MasteryQuestion> = {}): MasteryQuestion => 
 });
 
 describe("MasteryQuestionCard", () => {
+  it("preserves compiler output in the stem and keeps choices inline", async () => {
+    const diagnostic = "error[E0382]: use of moved value\n  --> src/main.rs:5:20\n   |\n5  | println!(\"{city}\");";
+    const { container } = render(
+      <MasteryQuestionCard
+        question={question({
+          prompt: `Read the compiler output.\n\n\`\`\`text\n${diagnostic}\n\`\`\`\n\nWhich fix works?`,
+          questionType: "choice",
+          options: [{ label: "A", body: "Borrow with `&city`" }],
+          allowFreeText: false,
+        })}
+        grade={null}
+        answered={false}
+        submittedAnswer=""
+        onSubmit={() => true}
+      />,
+      { wrapper: AppShellProvider },
+    );
+
+    await waitFor(() => expect(container.querySelector("pre")?.textContent?.trimEnd()).toBe(diagnostic));
+    expect(screen.getByText("Which fix works?").closest("pre")).toBeNull();
+    const option = await screen.findByRole("button", { name: /Borrow with &city/ });
+    expect(option.querySelector("code")).toHaveTextContent("&city");
+    expect(option.querySelector("p, pre")).toBeNull();
+  });
+
+  it("shows indented code in a choice that still works by keyboard", async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn(() => true);
+    const code = ["fn main() {", "    let pair = (5, 8);", "", "    println!(\"{pair}\");", "}"].join("\n");
+    render(
+      <MasteryQuestionCard
+        question={question({
+          prompt: "Which program fails to compile?",
+          questionType: "choice",
+          options: [
+            { label: "A", body: `\`\`\`rust\n${code}\n\`\`\`` },
+            { label: "B", body: "Neither program" },
+          ],
+          allowFreeText: false,
+        })}
+        grade={null}
+        answered={false}
+        submittedAnswer=""
+        onSubmit={onSubmit}
+      />,
+    );
+
+    const choice = await screen.findByRole("button", { name: /fn main/ });
+    expect(choice.querySelector("code")?.textContent?.trimEnd()).toBe(code);
+    expect(choice.querySelector("code")?.parentElement).toHaveClass("whitespace-pre", "overflow-x-auto");
+    expect(choice.querySelector("p, pre")).toBeNull();
+    expect(screen.getByRole("button", { name: /Neither program/ }).querySelector("code")).toBeNull();
+
+    choice.focus();
+    await user.keyboard("{Enter}");
+    await user.click(screen.getByRole("button", { name: "Submit" }));
+    expect(onSubmit).toHaveBeenCalledWith({ text: "A", answers: [{ questionId: "q-free", text: "A" }] });
+  });
+
   it("shows original evidence and assisted meaning without exposing a reference key", () => {
     render(<MasteryQuestionCard question={question({ visual: { task: "identification", answerCues: "visible", keyStatus: "unverified", hintsUsed: 1, sources: [{ imageUrl: "/api/knowledge-bases/kb/visual-assets/known", url: "/api/knowledge-bases/kb/files/book.pdf#page=4", sourcePath: "book.pdf", page: 4 }] } })} grade={null} answered={false} submittedAnswer="" onSubmit={() => true} />);
     expect(screen.getByRole("img", { name: "Original source evidence" })).toHaveAttribute("src", "/api/knowledge-bases/kb/visual-assets/known");

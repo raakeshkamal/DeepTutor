@@ -137,8 +137,12 @@ async def test_registration_shuffles_the_card_the_learner_sees(tmp_path, monkeyp
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "correct_body",
+    ["correct body", '```rust\nfn main() {\n    println!("hello");\n}\n```'],
+)
 async def test_registration_accepts_the_correct_body_as_expected_answer(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, correct_body
 ) -> None:
     """The model may register the correct body directly, not a letter.
 
@@ -159,15 +163,18 @@ async def test_registration_accepts_the_correct_body_as_expected_answer(
         question="Which option is correct?",
         question_type="choice",
         options=[
-            {"label": "A", "body": "correct body"},
+            {"label": "A", "body": correct_body},
             {"label": "B", "body": "distractor one"},
             {"label": "C", "body": "distractor two"},
         ],
-        expected_answer="correct body",
+        expected_answer=correct_body,
+        code_task="select_program" if correct_body.startswith("```") else None,
         explanation="because.",
     )
 
     assert result.success is True, result.content
     pending = LearningStore().load("path-1").pending_question
     assert pending is not None
-    assert pending.choice_map[pending.expected_answer] == "correct body"
+    assert pending.choice_map[pending.expected_answer] == correct_body
+    card_options = result.metadata["mastery_question"]["options"]
+    assert {option["label"]: option["body"] for option in card_options} == pending.choice_map

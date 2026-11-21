@@ -17,9 +17,8 @@ type Plugins = {
  * The host is frequently a `<button>` or a `<span>`, whose content model is
  * phrasing content — a `<p>` there is invalid markup and drags the block
  * spacing of the surrounding renderer in with it. Paragraphs and headings
- * therefore collapse to their children, and the block constructs a one-line
- * question cannot contain are simply not overridden: react-markdown will not
- * produce them from the inline grammar these strings use.
+ * collapse to their children. Fenced code uses a span styled as a block so
+ * multiline answer choices can stay inside their native buttons.
  */
 const COMPONENTS = {
   p: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
@@ -31,6 +30,11 @@ const COMPONENTS = {
   ),
   h3: ({ children }: { children?: React.ReactNode }) => (
     <strong>{children}</strong>
+  ),
+  pre: ({ children }: { children?: React.ReactNode }) => (
+    <span className="my-1 block max-w-full overflow-x-auto whitespace-pre rounded-md bg-[var(--muted)] px-3 py-2 [&>code]:bg-transparent [&>code]:p-0">
+      {children}
+    </span>
   ),
   code: ({ children }: { children?: React.ReactNode }) => (
     <code className="rounded bg-[color-mix(in_srgb,var(--foreground)_8%,transparent)] px-1 py-px font-mono text-[0.92em]">
