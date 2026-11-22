@@ -1,0 +1,76 @@
+# Credentials are loaded into the proxy process, never stored in this file.
+model_list:
+  - model_name: deeptutor-chat
+    litellm_params:
+      model: openai/deepseek-v4.1-flash
+      api_base: https://opencode.ai/inference/go/openai/v1
+      api_key: os.environ/OPENCODE_GO_API_KEY
+      timeout: 600
+      max_retries: 0
+    model_info:
+      id: deeptutor-go-deepseek
+      mode: chat
+      max_tokens: 1000000
+      max_input_tokens: 1000000
+      max_output_tokens: 384000
+      # Subscription usage has no additional per-request charge.
+      # OpenCode's allowance is recorded separately by proxy_hooks.
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+  - model_name: deeptutor-openrouter
+    litellm_params:
+      # The pinned LiteLLM OpenRouter adapter rejects Ember reasoning_effort.
+      # Use the compatible endpoint explicitly, preserving its native max value.
+      model: openai/meta/muse-ember
+      api_base: https://openrouter.ai/api/v1
+      allowed_openai_params: [reasoning_effort]
+      api_key: os.environ/OPENROUTER_API_KEY
+      timeout: 600
+      max_retries: 0
+      reasoning_effort: max
+      extra_headers:
+        HTTP-Referer: https://github.com/HKUDS/DeepTutor
+        X-OpenRouter-Title: DeepTutor
+    model_info:
+      id: deeptutor-openrouter-muse
+      mode: chat
+      max_tokens: 1048576
+      max_input_tokens: 1048576
+      max_output_tokens: 131072
+  - model_name: deeptutor-embeddings
+    litellm_params:
+      # Keep the OpenAI-compatible payload used by the existing OR adapter.
+      model: openai/cohere/embed-5-fast
+      api_base: https://openrouter.ai/api/v1
+      api_key: os.environ/OPENROUTER_API_KEY
+      timeout: 120
+      max_retries: 0
+      extra_headers:
+        HTTP-Referer: https://github.com/HKUDS/DeepTutor
+        X-OpenRouter-Title: DeepTutor
+    model_info:
+      id: deeptutor-openrouter-cohere
+      mode: embedding
+
+router_settings:
+  num_retries: 0
+  max_fallbacks: 1
+  timeout: 600
+  stream_timeout: 600
+  disable_cooldowns: true
+  fallbacks:
+    - deeptutor-chat: [deeptutor-openrouter]
+  context_window_fallbacks: []
+  content_policy_fallbacks: []
+
+litellm_settings:
+  drop_params: false
+  cache: false
+  set_verbose: false
+  turn_off_message_logging: true
+  redact_messages_in_exceptions: true
+  suppress_debug_info: true
+  callbacks: [proxy_hooks.observer]
+
+general_settings:
+  master_key: os.environ/DEEPTUTOR_LITELLM_KEY

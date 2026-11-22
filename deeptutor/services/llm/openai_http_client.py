@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import threading
@@ -114,6 +115,28 @@ def _uses_openrouter(spec: "ProviderSpec | None", api_base: str | None) -> bool:
     return bool(api_base and "openrouter" in api_base.lower())
 
 
+# Opt-in for gateways that require one stable identifier per conversation.
+# Resolve at send time, not client creation: SDK clients are pooled across turns.
+CONVERSATION_SESSION_HEADER = "__deeptutor_conversation__"
+
+
+async def _set_conversation_session_header(request: httpx.Request) -> None:
+    from deeptutor.services.llm.metrics import current_usage
+    from deeptutor.services.session.scope import current_owner_id
+    from deeptutor.services.workspace.context import current_workspace_id
+
+    usage = current_usage.get()
+    session_id = usage.session_id if usage is not None else ""
+    if session_id:
+        identity = f"{current_owner_id()}:{current_workspace_id()}:{session_id}"
+        session = hashlib.sha256(identity.encode()).hexdigest()
+    else:
+        # Probes and standalone jobs have no conversation. Never group them
+        # under a process-wide identifier or a previous learner's conversation.
+        session = uuid.uuid4().hex
+    request.headers["x-opencode-session"] = f"dt_{session}"
+
+
 def openai_sdk_client_kwargs(
     *,
     api_key: str | None,
@@ -153,6 +176,17 @@ def openai_sdk_client_kwargs(
         http_client = httpx.AsyncClient(verify=False)  # nosec B501
     else:
         http_client = None
+    contextual_session = any(
+        key.lower() == "x-opencode-session" and value == CONVERSATION_SESSION_HEADER
+        for key, value in headers.items()
+    )
+    if contextual_session:
+        if http_client is None:
+            http_client = httpx.AsyncClient(timeout=httpx.Timeout(600.0, connect=10.0))
+        http_client.event_hooks["request"].append(_set_conversation_session_header)
+        # The gateway owns retries and quota fallback. Do not repeat the
+        # whole paid fallback sequence in the SDK after the final failure.
+        kwargs.setdefault("max_retries", 0)
     if http_client is not None:
         kwargs["http_client"] = http_client
     return kwargs
