@@ -5,9 +5,12 @@ It does not run an OpenCode agent or replace mastery behavior.
 
 ## Routing
 
-- `deeptutor-chat` calls Go's `deepseek-v4.1-flash` through its OpenAI-compatible endpoint.
+- `deeptutor-chat` calls Go's `hungerg-free` through its OpenAI-compatible endpoint.
+- `hungerg-free` is a stealth reasoning model, free for a limited time.
+- It reports no monthly draw against the Go allowance.
 - One paid fallback calls OpenRouter's `meta/muse-ember` after an explicit Go allowance rejection.
 - Authentication errors, temporary rate limits, timeouts, and server errors do not authorize paid fallback.
+- A withdrawal of the free model is a not-found error, so it also does not authorize paid fallback.
 - An OpenRouter failure ends the chain. There is no third model.
 - `deeptutor-openrouter` still supports explicit OpenRouter calls.
 - Background task jobs, including the mastery memory refresh, use `deeptutor-chat`.
@@ -21,8 +24,15 @@ OpenCode documents coding-agent traffic requirements. A proxy does not change th
 
 ## Preserve the known model settings
 
-DeepSeek V4.1 Flash uses a 1,000,000-token context and supports up to 384,000 output tokens.
-The active chat profile explicitly records its context and `max` reasoning effort.
+DeepSeek V4.1 Flash used a 1,000,000-token context and up to 384,000 output tokens.
+HungerG Free uses the same 1,000,000-token context and up to 65,536 output tokens.
+DeepTutor's per-agent output limits all stay below 10,000 tokens, so the smaller cap fits.
+The active chat profile still records its context and `max` reasoning effort.
+
+HungerG Free publishes no reasoning-effort levels and returns no reasoning text.
+A `reasoning_effort` value is accepted and silently ignored.
+The tutor still works, but DeepTutor shows no thinking stream for it.
+It also accepts images and video, so the vision override stays correct.
 The existing per-agent output limits remain unchanged.
 
 Muse Ember retains its 1,048,576-token context and `max` reasoning setting.
@@ -37,7 +47,7 @@ However, DeepTutor includes the endpoint URL in its index signature.
 Keeping the active embedding profile unchanged preserves every existing index identity.
 Do not switch it to the proxy alias without a separate, verified metadata migration.
 
-The former main models were `xiaomi/mimo-v2.6-pro`, then `openai/gpt-6.1-terra`, followed by Muse Ember, then Go's `glm-5.3`.
+The former main models were `xiaomi/mimo-v2.6-pro`, then `openai/gpt-6.1-terra`, followed by Muse Ember, then Go's `glm-5.3`, then Go's `deepseek-v4.1-flash`.
 A spare `z-ai/glm-5.3-flash` was removed before the fork migration.
 Terra used a 1,050,000-token context. A saved snapshot records `xhigh` effort.
 These are historical settings, not additional fallback routes.

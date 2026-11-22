@@ -12,6 +12,10 @@ from litellm.integrations.custom_logger import CustomLogger
 
 logger = logging.getLogger(__name__)
 
+# Models served by the Go endpoint. The User-Agent and the conversation header
+# apply to these even when a test redirects api_base to a local stub.
+GO_MODEL_NAMES = frozenset({"hungerg-free", "openai/hungerg-free"})
+
 
 def is_go_allowance_exhausted(error: Exception) -> bool:
     """Only an explicit Go usage-limit rejection authorizes paid fallback."""
@@ -69,7 +73,7 @@ class ProxyObserver(CustomLogger):
 
     async def async_pre_call_deployment_hook(self, kwargs, call_type):
         headers = dict(kwargs.get("extra_headers") or {})
-        if str(kwargs.get("api_base", "")).startswith("https://opencode.ai/") or kwargs.get("model") in {"deepseek-v4.1-flash", "openai/deepseek-v4.1-flash"}:
+        if str(kwargs.get("api_base", "")).startswith("https://opencode.ai/") or kwargs.get("model") in GO_MODEL_NAMES:
             headers["User-Agent"] = "DeepTutor/1.7.4 (LiteLLM gateway)"
         else:
             headers = {k: v for k, v in headers.items() if k.lower() != "x-opencode-session"}
@@ -82,7 +86,7 @@ class ProxyObserver(CustomLogger):
         info = litellm_call_info or {}
         base = str(info.get("api_base") or "")
         model_id = str((info.get("model_info") or {}).get("id") or "")
-        if "opencode.ai" in base or model_id == "deeptutor-go-deepseek":
+        if "opencode.ai" in base or model_id.startswith("deeptutor-go-"):
             route = "go"
         elif "openrouter.ai" in base or model_id.startswith("deeptutor-openrouter-") or info.get("custom_llm_provider") == "openrouter":
             route = "openrouter"

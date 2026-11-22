@@ -9,9 +9,14 @@ import os
 from pathlib import Path
 import shutil
 
+# Display names only; the `deeptutor-chat` alias and every selection ID stay put.
+CHAT_PROFILE_NAME = "OpenCode Go HungerG Free (via LiteLLM)"
+CHAT_MODEL_NAME = "HungerG Free (Go; OpenRouter on quota exhaustion)"
+TASK_MODEL_NAME = "HungerG Free (Go)"
+
 
 def _move_background_jobs_to_go(out: dict) -> None:
-    """Background jobs share the Go allowance; their selection IDs stay put."""
+    """Background jobs share the Go route; their selection IDs stay put."""
     task = out["services"].get("task")
     if not task or not task.get("active_profile_id"):
         return
@@ -19,11 +24,12 @@ def _move_background_jobs_to_go(out: dict) -> None:
     if profile is None or profile.get("connection_id") != "conn-litellm":
         return
     model = next((m for m in profile.get("models", []) if m["id"] == task.get("active_model_id")), None)
-    if model is None or model.get("model") != "deeptutor-openrouter":
+    # Rename only the Go route or the earlier Muse pin; leave a foreign choice alone.
+    if model is None or model.get("model") not in {"deeptutor-chat", "deeptutor-openrouter"}:
         return
-    profile["name"] = "Go DeepSeek V4.1 Flash (via LiteLLM)"
+    profile["name"] = CHAT_PROFILE_NAME
     model.update(
-        name="DeepSeek V4.1 Flash (Go)", model="deeptutor-chat",
+        name=TASK_MODEL_NAME, model="deeptutor-chat",
         context_window=1_000_000, reasoning_effort="max",
     )
     model.setdefault("capabilities", {})["vision"] = True
@@ -39,6 +45,9 @@ def proxy_catalog(catalog: dict, local_key: str) -> dict:
     if model["model"] == "deeptutor-chat":
         # Upgrade existing installs without replacing an explicit override.
         model.setdefault("capabilities", {}).setdefault("vision", True)
+        # Re-running after a model swap refreshes the visible label only.
+        main["name"] = CHAT_PROFILE_NAME
+        model["name"] = CHAT_MODEL_NAME
         _move_background_jobs_to_go(out)
         return out
     if model["model"] != "meta/muse-ember":
@@ -59,8 +68,8 @@ def proxy_catalog(catalog: dict, local_key: str) -> dict:
             base_url=connection["base_url"], api_format="openai_chat",
             wire_api="chat_completions", extra_headers=deepcopy(headers),
         )
-    main["name"] = "Go DeepSeek V4.1 Flash (via LiteLLM)"
-    model.update(name="DeepSeek V4.1 Flash (Go; OpenRouter on quota exhaustion)", model="deeptutor-chat", context_window=1_000_000, reasoning_effort="max")
+    main["name"] = CHAT_PROFILE_NAME
+    model.update(name=CHAT_MODEL_NAME, model="deeptutor-chat", context_window=1_000_000, reasoning_effort="max")
     # DeepTutor sees the Custom alias, not the vision-capable upstream model ID.
     model.setdefault("capabilities", {})["vision"] = True
     original["id"] = "llm-profile-litellm-openrouter"
@@ -74,7 +83,7 @@ def proxy_catalog(catalog: dict, local_key: str) -> dict:
         task_profile = deepcopy(main)
         task_profile["id"] = "task-profile-litellm-go"
         task_model = deepcopy(next(m for m in main["models"] if m["id"] == service["active_model_id"]))
-        task_model.update(id="task-model-litellm-go", name="DeepSeek V4.1 Flash (Go)")
+        task_model.update(id="task-model-litellm-go", name=TASK_MODEL_NAME)
         task_profile["models"] = [task_model]
         task.update(
             active_profile_id=task_profile["id"],

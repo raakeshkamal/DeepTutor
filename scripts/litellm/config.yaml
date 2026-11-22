@@ -2,17 +2,20 @@
 model_list:
   - model_name: deeptutor-chat
     litellm_params:
-      model: openai/deepseek-v4.1-flash
+      # Stealth reasoning model, free for a limited time.
+      # It reports no monthly draw against the Go allowance.
+      # It publishes no reasoning-effort levels and returns no reasoning text.
+      model: openai/hungerg-free
       api_base: https://opencode.ai/inference/go/openai/v1
       api_key: os.environ/OPENCODE_GO_API_KEY
       timeout: 600
       max_retries: 0
     model_info:
-      id: deeptutor-go-deepseek
+      id: deeptutor-go-hungerg
       mode: chat
       max_tokens: 1000000
       max_input_tokens: 1000000
-      max_output_tokens: 384000
+      max_output_tokens: 65536
       # Subscription usage has no additional per-request charge.
       # OpenCode's allowance is recorded separately by proxy_hooks.
       input_cost_per_token: 0
