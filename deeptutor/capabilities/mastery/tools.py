@@ -20,6 +20,7 @@ import json
 import logging
 import random
 import re
+import time
 from typing import TYPE_CHECKING, Any
 import uuid
 
@@ -2244,6 +2245,15 @@ class MasteryAssessTool(BaseTool):
         recent_answer = await _recent_learner_messages(
             session_id, learner_answer, leaf_message_id=kwargs.get("_learner_message_id")
         )
+        blocked = await _ensure_assessment_packet(
+            service,
+            progress,
+            kp_id,
+            turn_id=_resolve_turn_id(kwargs),
+            learner_request=learner_answer,
+        )
+        if blocked is not None:
+            return blocked
         try:
             progress, receipt = await service.assess_qualitative_semantic(
                 path_id,
@@ -2298,6 +2308,124 @@ class MasteryAssessTool(BaseTool):
             "instruction": _assess_next_move(mastered, next_step),
         }
         return _json_result(payload, meta_key="mastery_assess")
+
+
+# One objective-scoped auto-build per (path, objective, turn): a tutor model
+# that retries a blocked ``mastery_assess`` must not pay a fresh retrieval round
+# on every retry, and one failed build must not restart within the same turn.
+_ASSESS_PACKET_BUILDS: dict[tuple[str, str, str], None] = {}
+_ASSESS_BUILD_WINDOW_SECONDS = 300.0
+
+
+def _assessment_packet_blocked(store: Any, progress: Any, kp_id: str) -> bool:
+    """True when a selected-material objective has no assessment-usable packet.
+
+    Teaching-first turns only ever store focus-scoped packets, which the
+    assessment gate always refuses. Text-only objectives never need a packet,
+    and material/scope problems keep their existing error path.
+    """
+    from deeptutor.learning.lesson_evidence import (
+        SCHEMA,
+        LessonUnavailable,
+        assessment_evidence,
+        selected_scope,
+    )
+
+    try:
+        topic = store.get_topic(progress.book_id, progress=progress)
+        if not selected_scope(topic, progress, kp_id):
+            return False
+    except LessonUnavailable:
+        return False
+    packet = assessment_evidence(progress, kp_id)
+    if not packet:
+        return True
+    coverage = packet.get("coverage") or {}
+    return (
+        packet.get("status") != "ready"
+        or packet.get("schema_version") != SCHEMA
+        or coverage.get("complete") is not True
+        or coverage.get("scope") == "focus"
+    )
+
+
+async def _ensure_assessment_packet(
+    service: Any,
+    progress: Any,
+    kp_id: str,
+    *,
+    turn_id: str,
+    learner_request: str = "",
+) -> ToolResult | None:
+    """Spend one objective-scoped preparation when the packet type blocks grading.
+
+    Returns ``None`` when grading may proceed. A build that still cannot cover
+    the objective defers honestly: the tutor is told to offer
+    ``mastery_defer_objective`` or teach the missing part, never to retry the
+    same blocked call.
+    """
+    if not _assessment_packet_blocked(service.store, progress, kp_id):
+        return None
+    from deeptutor.learning.lesson_evidence import LessonUnavailable, prepare_lesson
+    from deeptutor.runtime.stream_bus import get_bus
+    from deeptutor.services.llm.config import get_llm_config
+
+    window = str(turn_id or "").strip()
+    if not window:
+        # Turns without an id fall back to a coarse time window so a later
+        # turn may build again while one model turn cannot loop the build.
+        window = f"t{int(time.monotonic() // _ASSESS_BUILD_WINDOW_SECONDS)}"
+    key = (str(progress.book_id), kp_id, window)
+    if key in _ASSESS_PACKET_BUILDS:
+        return ToolResult(
+            content=(
+                "An objective-scoped preparation was already attempted for this "
+                "objective and did not produce assessment-bound evidence. Do not "
+                "call mastery_assess again unchanged this turn: offer the learner "
+                "mastery_defer_objective for this objective, or finish the reply."
+            ),
+            success=False,
+        )
+    _ASSESS_PACKET_BUILDS[key] = None
+    while len(_ASSESS_PACKET_BUILDS) > 512:
+        _ASSESS_PACKET_BUILDS.pop(next(iter(_ASSESS_PACKET_BUILDS)))
+
+    try:
+        evidence = await prepare_lesson(
+            service.store,
+            str(progress.book_id),
+            kp_id,
+            get_llm_config(),
+            stream=get_bus(turn_id),
+            focus="",
+            learner_request=str(learner_request or "")[:1500],
+        )
+    except LessonUnavailable as exc:
+        return ToolResult(
+            content=(
+                f"The assessment source packet could not be prepared: {exc} "
+                "Do not retry mastery_assess unchanged; offer the learner "
+                "mastery_defer_objective for this objective, or teach the "
+                "missing part first."
+            ),
+            success=False,
+        )
+    coverage = (evidence or {}).get("coverage") or {}
+    if coverage.get("complete") is not True or coverage.get("scope") != "objective":
+        missing = coverage.get("missing")
+        if not str(missing or "").strip():
+            missing = "the selected sources did not cover the whole objective"
+        return ToolResult(
+            content=(
+                "The selected sources still do not cover this objective completely "
+                f"({missing}). A teaching-slice packet cannot authorize grading and "
+                "a complete one could not be built. Do not retry mastery_assess "
+                "unchanged; offer the learner mastery_defer_objective for this "
+                "objective, or teach the missing part first."
+            ),
+            success=False,
+        )
+    return None
 
 
 def _assess_next_move(mastered: bool, next_step: dict) -> str:

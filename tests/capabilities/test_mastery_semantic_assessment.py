@@ -1055,3 +1055,199 @@ async def test_final_qualitative_grade_without_reference_is_not_saved(monkeypatc
         await semantic.judge_answers(
             None, [{"question_id": "objective", "assessment_type": "qualitative"}]
         )
+
+
+@pytest.mark.asyncio
+async def test_blocked_assess_spends_one_objective_build_then_grades(service, monkeypatch):
+    """A focus-only teaching packet must not dead-end the qualitative gate."""
+    from deeptutor.capabilities.mastery import tools
+    from deeptutor.learning import lesson_evidence
+    from deeptutor.learning import semantic_assessment as semantic
+    from deeptutor.learning.models import KnowledgeType
+
+    def seed(tx):
+        tx.progress.modules[0].knowledge_points[0].type = KnowledgeType.CONCEPT
+        tx.progress.lesson_evidence["kp1"] = {
+            "status": "ready",
+            "schema_version": lesson_evidence.SCHEMA,
+            "coverage": {"complete": True, "scope": "focus", "focus": "matrix form"},
+            "sources": [],
+        }
+        tx.touch()
+
+    service.store.mutate("p", seed)
+    monkeypatch.setattr(lesson_evidence, "selected_scope", lambda *args, **kwargs: {"kb": None})
+    monkeypatch.setattr(lesson_evidence, "validate_evidence", lambda *args, **kwargs: None)
+    builds = []
+
+    async def fake_prepare(store, path_id, kp_id, config, stream=None, **kwargs):
+        builds.append((path_id, kp_id, kwargs.get("focus"), kwargs.get("learner_request")))
+        packet = {
+            "status": "ready",
+            "schema_version": lesson_evidence.SCHEMA,
+            "coverage": {"complete": True, "scope": "objective", "focus": ""},
+            "sources": [],
+        }
+
+        def commit(tx):
+            tx.progress.assessment_evidence["kp1"] = packet
+            tx.progress.lesson_evidence["kp1"] = packet
+            tx.touch()
+
+        store.mutate(path_id, commit)
+        return packet
+
+    monkeypatch.setattr(lesson_evidence, "prepare_lesson", fake_prepare)
+
+    async def judge(config, items):
+        assert items[0]["answer"] == "alpha comes first"
+        return {
+            "kp1": semantic.Verdict(
+                result="correct", confidence=0.99, feedback="Clear and complete."
+            )
+        }
+
+    monkeypatch.setattr(semantic, "judge_answers", judge)
+
+    async def record(_value):
+        pass
+
+    monkeypatch.setattr("deeptutor.learning.assessment.record_assessment", record)
+    monkeypatch.setattr(tools, "_new_service", lambda: service)
+    monkeypatch.setattr(tools, "_ASSESS_PACKET_BUILDS", {})
+    kwargs = dict(
+        _mastery_path_id="p",
+        knowledge_point_id="kp1",
+        _session_id="session",
+        _turn_id="turn-1",
+        _learner_message="alpha comes first",
+    )
+    for _ in range(2):
+        result = await tools.MasteryAssessTool().execute(**kwargs)
+        assert result.success, result.content
+    assert builds == [("p", "kp1", "", "alpha comes first")]
+    progress = service.store.load("p")
+    assert progress.assessment_evidence["kp1"]["coverage"]["scope"] == "objective"
+    assert progress.qualitative_mastery["kp1"] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["incomplete", "unavailable"])
+async def test_uncoverable_objective_defers_instead_of_looping(service, monkeypatch, mode):
+    from deeptutor.capabilities.mastery import tools
+    from deeptutor.learning import lesson_evidence
+    from deeptutor.learning.models import KnowledgeType
+
+    def seed(tx):
+        tx.progress.modules[0].knowledge_points[0].type = KnowledgeType.CONCEPT
+        tx.progress.lesson_evidence["kp1"] = {
+            "status": "ready",
+            "schema_version": lesson_evidence.SCHEMA,
+            "coverage": {"complete": True, "scope": "focus", "focus": "matrix form"},
+            "sources": [],
+        }
+        tx.touch()
+
+    service.store.mutate("p", seed)
+    monkeypatch.setattr(lesson_evidence, "selected_scope", lambda *args, **kwargs: {"kb": None})
+    builds = []
+
+    async def fake_prepare(store, path_id, kp_id, config, stream=None, **kwargs):
+        builds.append(kwargs.get("focus"))
+        if mode == "unavailable":
+            raise lesson_evidence.LessonUnavailable(
+                "No useful page-located matches were retrieved for this request."
+            )
+        return {
+            "status": "ready",
+            "schema_version": lesson_evidence.SCHEMA,
+            "coverage": {
+                "complete": False,
+                "scope": "objective",
+                "focus": "",
+                "missing": "the velocity relation on page 71",
+            },
+            "sources": [],
+        }
+
+    monkeypatch.setattr(lesson_evidence, "prepare_lesson", fake_prepare)
+    monkeypatch.setattr(tools, "_new_service", lambda: service)
+    monkeypatch.setattr(tools, "_ASSESS_PACKET_BUILDS", {})
+    kwargs = dict(
+        _mastery_path_id="p",
+        knowledge_point_id="kp1",
+        _session_id="session",
+        _turn_id="turn-2",
+        _learner_message="alpha comes first",
+    )
+    first = await tools.MasteryAssessTool().execute(**kwargs)
+    assert first.success is False
+    assert "mastery_defer_objective" in first.content
+    if mode == "incomplete":
+        assert "the velocity relation on page 71" in first.content
+    else:
+        assert "No useful page-located matches" in first.content
+    second = await tools.MasteryAssessTool().execute(**kwargs)
+    assert second.success is False
+    assert "already attempted" in second.content
+    assert len(builds) == 1
+
+
+@pytest.mark.asyncio
+async def test_ready_objective_packet_skips_the_auto_build(service, monkeypatch):
+    from deeptutor.capabilities.mastery import tools
+    from deeptutor.learning import lesson_evidence
+    from deeptutor.learning import semantic_assessment as semantic
+    from deeptutor.learning.models import KnowledgeType
+
+    def seed(tx):
+        tx.progress.modules[0].knowledge_points[0].type = KnowledgeType.CONCEPT
+        tx.progress.lesson_evidence["kp1"] = {
+            "status": "ready",
+            "schema_version": lesson_evidence.SCHEMA,
+            "coverage": {"complete": True, "scope": "focus", "focus": "matrix form"},
+            "sources": [],
+        }
+        tx.progress.assessment_evidence["kp1"] = {
+            "status": "ready",
+            "schema_version": lesson_evidence.SCHEMA,
+            "coverage": {"complete": True, "scope": "objective", "focus": ""},
+            "sources": [],
+        }
+        tx.touch()
+
+    service.store.mutate("p", seed)
+    monkeypatch.setattr(lesson_evidence, "selected_scope", lambda *args, **kwargs: {"kb": None})
+    monkeypatch.setattr(lesson_evidence, "validate_evidence", lambda *args, **kwargs: None)
+    builds = []
+
+    async def fake_prepare(*args, **kwargs):
+        builds.append(kwargs.get("focus"))
+        raise AssertionError("A ready objective packet must not trigger a build")
+
+    monkeypatch.setattr(lesson_evidence, "prepare_lesson", fake_prepare)
+
+    async def judge(config, items):
+        return {
+            "kp1": semantic.Verdict(
+                result="correct", confidence=0.99, feedback="Clear and complete."
+            )
+        }
+
+    monkeypatch.setattr(semantic, "judge_answers", judge)
+
+    async def record(_value):
+        pass
+
+    monkeypatch.setattr("deeptutor.learning.assessment.record_assessment", record)
+    monkeypatch.setattr(tools, "_new_service", lambda: service)
+    monkeypatch.setattr(tools, "_ASSESS_PACKET_BUILDS", {})
+    result = await tools.MasteryAssessTool().execute(
+        _mastery_path_id="p",
+        knowledge_point_id="kp1",
+        _session_id="session",
+        _turn_id="turn-3",
+        _learner_message="alpha comes first",
+    )
+    assert result.success, result.content
+    assert builds == []
