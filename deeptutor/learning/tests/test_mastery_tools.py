@@ -1500,8 +1500,8 @@ async def _build_two_concepts(path_id):
 
 
 @pytest.mark.asyncio
-async def test_assess_pass_tells_the_tutor_to_continue_with_next(path_id):
-    """A cleared concept gate says to go on, as mastery_grade does for cards (#2323)."""
+async def test_assess_pass_ends_the_turn_and_defers_the_next_objective(path_id):
+    """A cleared concept gate reports the grade and stops there."""
     first = await _build_two_concepts(path_id)
     result = json.loads(
         (
@@ -1515,11 +1515,14 @@ async def test_assess_pass_tells_the_tutor_to_continue_with_next(path_id):
     assert result["mastered"] is True
     assert result["next"]["knowledge_point_id"] != first
     assert result["next"]["action"] != "complete"
-    assert "continue with `next` in this same reply" in result["instruction"]
+    # The grading turn must not also start the next lesson. That is what made a
+    # recorded verdict wait behind minutes of source preparation.
+    assert "later turn" in result["instruction"]
+    assert "same reply" not in result["instruction"]
 
 
 @pytest.mark.asyncio
-async def test_assess_partial_tells_the_tutor_to_teach_the_gap_and_ask_again(path_id, monkeypatch):
+async def test_assess_partial_reports_the_gap_and_waits_for_the_learner(path_id, monkeypatch):
     from deeptutor.learning import semantic_assessment
 
     async def judge(_config, items):
@@ -1542,8 +1545,7 @@ async def test_assess_partial_tells_the_tutor_to_teach_the_gap_and_ask_again(pat
         ).content
     )
     assert result["final"] is True and result["mastered"] is False
-    assert "not cleared" in result["instruction"]
-    assert "mastery_assess" in result["instruction"]
+    assert "learner reply" in result["instruction"]
 
 
 @pytest.mark.asyncio

@@ -1471,6 +1471,114 @@ async def test_invoked_group_reply_strips_dangling_peer_question_in_one_round(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("result", ["correct", "partial", "ungraded"])
+async def test_mastery_assessment_delivers_feedback_without_a_next_lesson(monkeypatch, result):
+    from deeptutor.capabilities.mastery import tools
+    from deeptutor.learning import semantic_assessment as semantic
+
+    store = LearningStore()
+    store.save(
+        LearningProgress(
+            book_id="p1",
+            modules=[
+                LearningModule(
+                    id="m1",
+                    name="Scheduling",
+                    order=0,
+                    knowledge_points=[
+                        KnowledgePoint(
+                            id="kp1", name="Explain blocking", type="concept", module_id="m1"
+                        ),
+                        KnowledgePoint(
+                            id="kp2", name="Explain scheduling", type="concept", module_id="m1"
+                        ),
+                    ],
+                )
+            ],
+        )
+    )
+
+    async def no_usable_sources(*_args, **_kwargs):
+        return None, False
+
+    async def judge(_config, items):
+        assert items[0]["answer"] == "Sleeping makes the thread unready."
+        return {
+            "kp1": semantic.Verdict(
+                result=result,
+                confidence=0.95 if result != "ungraded" else 0.0,
+                feedback="Feedback from the grader.",
+                reference_answer="A blocked thread is not ready to run.",
+            )
+        }
+
+    monkeypatch.setattr(tools, "_ensure_assessment_packet", no_usable_sources)
+    monkeypatch.setattr(semantic, "judge_answers", judge)
+
+    class Registry(_Registry):
+        def build_openai_schemas(self, _enabled):
+            return [
+                tool.get_definition().to_openai_schema()
+                for tool in (tools.MasteryAssessTool(), tools.MasteryPrepareLessonTool())
+            ]
+
+        async def execute(self, name, **kwargs):
+            self.executed.append(name)
+            assert name == "mastery_assess", "The next lesson must not delay the grade"
+            return await tools.MasteryAssessTool().execute(**kwargs)
+
+    def call(name, objective):
+        return [
+            _llm_chunk(
+                tool_calls=[
+                    {
+                        "id": name,
+                        "name": name,
+                        "arguments": json.dumps({"knowledge_point_id": objective}),
+                    }
+                ],
+                finish_reason="tool_calls",
+            )
+        ]
+
+    next_round = (
+        [_llm_chunk(content="What is the thread waiting for?", finish_reason="stop")]
+        if result == "ungraded"
+        else call("mastery_prepare_lesson", "kp2")
+    )
+    client = _ScriptedChatClient([call("mastery_assess", "kp1"), next_round])
+    pipeline = MasteryLoopPipeline(language="en")
+    registry = pipeline.registry = Registry()
+    names = ["mastery_assess", "mastery_prepare_lesson"]
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _: names)
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    events = await _run(
+        pipeline,
+        UnifiedContext(
+            language="en",
+            session_id="s1",
+            user_message="Sleeping makes the thread unready.",
+            allowed_builtin_tools=names,
+            metadata={"mastery_mode": True, "mastery_path_id": "p1", "turn_id": "grade-turn"},
+        ),
+    )
+
+    assert registry.executed == ["mastery_assess"]
+    public = "".join(_contents(events))
+    assert _result(events).metadata["response"] == public
+    assert _result(events).metadata["completed"] is True
+    assert client.call_count == (2 if result == "ungraded" else 1)
+    if result == "ungraded":
+        assert public == "What is the thread waiting for?"
+        return
+    assert public.startswith("**Correct.**" if result == "correct" else "**Partly correct.**")
+    assert public.count("Feedback from the grader.") == 1
+    assert public.count("Graded from general knowledge, not from your selected material.") == 1
+    assert store.load("p1").learning_evidence[-1].result == result
+    assert not store.load("p1").lesson_evidence
+
+
+@pytest.mark.asyncio
 async def test_mastery_tool_round_keeps_teaching_markdown_visible(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

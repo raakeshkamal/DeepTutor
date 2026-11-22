@@ -2245,7 +2245,7 @@ class MasteryAssessTool(BaseTool):
         recent_answer = await _recent_learner_messages(
             session_id, learner_answer, leaf_message_id=kwargs.get("_learner_message_id")
         )
-        blocked = await _ensure_assessment_packet(
+        blocked, grounded = await _ensure_assessment_packet(
             service,
             progress,
             kp_id,
@@ -2263,13 +2263,13 @@ class MasteryAssessTool(BaseTool):
                 scheduler=scheduler_for_path(service.store, path_id),
                 session_id=session_id,
                 turn_id=_resolve_turn_id(kwargs),
+                ungrounded=not grounded,
             )
         except MasteryInteractionError as exc:
             return ToolResult(content=str(exc), success=False)
         if not receipt["final"]:
             return _json_result({"knowledge_point_id": kp_id, **receipt}, meta_key="mastery_assess")
         passed = receipt["result"] == "correct"
-        feedback = receipt["feedback"]
         kp, _, _ = find_knowledge_point(progress, kp_id)
         assert kp is not None
         # The graded explanation may include an earlier turn the learner was
@@ -2295,6 +2295,12 @@ class MasteryAssessTool(BaseTool):
             quality={"correct": 1.0, "partial": 0.5, "incorrect": 0.0}[receipt["result"]],
             material_title=progress.name,
         )
+        if not grounded:
+            # Name the provenance once, in the text the learner sees.
+            receipt = {
+                **receipt,
+                "feedback": f"{str(receipt['feedback']).rstrip()} {_UNGROUNDED_NOTE}",
+            }
         mastered = is_mastered(progress, kp)
         next_step = next_objective(progress).to_dict()
         payload = {
@@ -2302,11 +2308,15 @@ class MasteryAssessTool(BaseTool):
             "path_revision": progress.version,
             "passed": passed,
             **receipt,
+            "graded_from": "selected_sources" if grounded else "general_knowledge",
             "mastered": mastered,
             "mastery": round(display_mastery(progress, kp), 3),
             "next": next_step,
             "instruction": _assess_next_move(mastered, next_step),
         }
+        recorded = kwargs.get("_assessment_recorded")
+        if callable(recorded):
+            recorded(payload)
         return _json_result(payload, meta_key="mastery_assess")
 
 
@@ -2315,6 +2325,9 @@ class MasteryAssessTool(BaseTool):
 # on every retry, and one failed build must not restart within the same turn.
 _ASSESS_PACKET_BUILDS: dict[tuple[str, str, str], None] = {}
 _ASSESS_BUILD_WINDOW_SECONDS = 300.0
+# Shown once when a grade comes from the model's own knowledge because the
+# selected material was checked and does not cover the objective.
+_UNGROUNDED_NOTE = "Graded from general knowledge, not from your selected material."
 
 
 def _assessment_packet_blocked(store: Any, progress: Any, kp_id: str) -> bool:
@@ -2349,6 +2362,42 @@ def _assessment_packet_blocked(store: Any, progress: Any, kp_id: str) -> bool:
     )
 
 
+def _objective_packet_is_incomplete(store: Any, progress: Any, kp_id: str) -> bool:
+    """True when stored evidence already says these sources miss the objective.
+
+    Rebuilding reaches the same conclusion for the same objective on the same
+    selected material, so the turn grades from model knowledge instead of
+    paying for that search again.
+    """
+    from deeptutor.learning.lesson_evidence import (
+        LessonUnavailable,
+        assessment_evidence,
+        objective_fingerprint,
+        scope_snapshot,
+    )
+
+    try:
+        topic = store.get_topic(progress.book_id, progress=progress)
+        current_scope, _ = scope_snapshot(topic, progress, kp_id)
+        current_objective = objective_fingerprint(progress, kp_id)
+    except (AttributeError, TypeError, ValueError, LessonUnavailable):
+        return False
+    for packet in (
+        assessment_evidence(progress, kp_id),
+        progress.lesson_evidence.get(kp_id, {}),
+    ):
+        if not packet:
+            continue
+        if packet.get("objective_fingerprint") != current_objective:
+            continue
+        if packet.get("scope_fingerprint") != current_scope:
+            continue
+        coverage = packet.get("coverage") or {}
+        if coverage.get("complete") is False and str(coverage.get("missing") or "").strip():
+            return True
+    return False
+
+
 async def _ensure_assessment_packet(
     service: Any,
     progress: Any,
@@ -2356,16 +2405,21 @@ async def _ensure_assessment_packet(
     *,
     turn_id: str,
     learner_request: str = "",
-) -> ToolResult | None:
-    """Spend one objective-scoped preparation when the packet type blocks grading.
+) -> tuple[ToolResult | None, bool]:
+    """Spend at most one objective-scoped preparation, then let grading proceed.
 
-    Returns ``None`` when grading may proceed. A build that still cannot cover
-    the objective defers honestly: the tutor is told to offer
-    ``mastery_defer_objective`` or teach the missing part, never to retry the
-    same blocked call.
+    Returns ``(result, grounded)``. ``grounded`` is True when the packet may
+    authorize grading against the selected material. When the sources cannot
+    cover the objective, the turn grades from the model's own knowledge rather
+    than stalling the learner behind repeated source searches.
+
+    ``result`` stays ``None`` unless this path cannot be graded at all.
     """
     if not _assessment_packet_blocked(service.store, progress, kp_id):
-        return None
+        return None, True
+    if _objective_packet_is_incomplete(service.store, progress, kp_id):
+        # These sources already failed this objective; grade from knowledge.
+        return None, False
     from deeptutor.learning.lesson_evidence import LessonUnavailable, prepare_lesson
     from deeptutor.runtime.stream_bus import get_bus
     from deeptutor.services.llm.config import get_llm_config
@@ -2377,15 +2431,9 @@ async def _ensure_assessment_packet(
         window = f"t{int(time.monotonic() // _ASSESS_BUILD_WINDOW_SECONDS)}"
     key = (str(progress.book_id), kp_id, window)
     if key in _ASSESS_PACKET_BUILDS:
-        return ToolResult(
-            content=(
-                "An objective-scoped preparation was already attempted for this "
-                "objective and did not produce assessment-bound evidence. Do not "
-                "call mastery_assess again unchanged this turn: offer the learner "
-                "mastery_defer_objective for this objective, or finish the reply."
-            ),
-            success=False,
-        )
+        # This turn already spent its one build; grade from knowledge, never
+        # rebuild.
+        return None, False
     _ASSESS_PACKET_BUILDS[key] = None
     while len(_ASSESS_PACKET_BUILDS) > 512:
         _ASSESS_PACKET_BUILDS.pop(next(iter(_ASSESS_PACKET_BUILDS)))
@@ -2400,58 +2448,21 @@ async def _ensure_assessment_packet(
             focus="",
             learner_request=str(learner_request or "")[:1500],
         )
-    except LessonUnavailable as exc:
-        return ToolResult(
-            content=(
-                f"The assessment source packet could not be prepared: {exc} "
-                "Do not retry mastery_assess unchanged; offer the learner "
-                "mastery_defer_objective for this objective, or teach the "
-                "missing part first."
-            ),
-            success=False,
-        )
+    except LessonUnavailable:
+        # Unavailable sources are not a learner verdict; grade from knowledge.
+        return None, False
     coverage = (evidence or {}).get("coverage") or {}
-    if coverage.get("complete") is not True or coverage.get("scope") != "objective":
-        missing = coverage.get("missing")
-        if not str(missing or "").strip():
-            missing = "the selected sources did not cover the whole objective"
-        return ToolResult(
-            content=(
-                "The selected sources still do not cover this objective completely "
-                f"({missing}). A teaching-slice packet cannot authorize grading and "
-                "a complete one could not be built. Do not retry mastery_assess "
-                "unchanged; offer the learner mastery_defer_objective for this "
-                "objective, or teach the missing part first."
-            ),
-            success=False,
-        )
-    return None
+    grounded = coverage.get("complete") is True and coverage.get("scope") == "objective"
+    return None, grounded
 
 
 def _assess_next_move(mastered: bool, next_step: dict) -> str:
-    """What to do after a final qualitative verdict.
-
-    ``mastery_grade`` already says this for cards. Without it, a passing
-    explanation tends to end the turn on an announcement of the next topic,
-    which leaves the learner nothing to answer.
-    """
+    """Describe the next learner action without starting it in the grading turn."""
     if not mastered:
-        return (
-            "The gate is not cleared. Explain the gap this explanation left "
-            "(for a partial result, name the missing part), then ask the "
-            "learner to explain it again and record that with mastery_assess."
-        )
+        return "Show the assessment feedback. Let the learner reply before assessing again."
     if next_step.get("action") == "complete":
-        return (
-            "This cleared the objective's gate and the path is complete. "
-            "Say what the explanation showed and tell the learner the path is done."
-        )
-    return (
-        "This cleared the objective's gate. Say briefly what the explanation "
-        "showed, then continue with `next` in this same reply: start its "
-        "lesson or ask its first question. Do not end the turn on an "
-        "announcement of what comes next."
-    )
+        return "Show the assessment feedback and tell the learner the path is complete."
+    return "Show the assessment feedback. Start the next objective in a later turn."
 
 
 class MasterySkipQuestionTool(BaseTool):

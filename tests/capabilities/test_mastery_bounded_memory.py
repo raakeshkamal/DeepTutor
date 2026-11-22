@@ -177,9 +177,24 @@ async def test_short_session_needs_no_extra_model_call_and_recall_stays_on_selec
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("invalid", ["not JSON", memory(["hs-tutor-999"]), memory([])])
-async def test_invalid_or_incomplete_memory_is_rejected(monkeypatch, invalid):
-    async def stream(_self, **kwargs):
+@pytest.mark.parametrize(
+    ("invalid", "reason"),
+    [
+        ("private non-JSON reply", "invalid_json"),
+        (memory(["hs-tutor-999"]), "archive_coverage_mismatch"),
+        (memory([]), "archive_coverage_mismatch"),
+        (
+            memory(["hs-tutor-2"]).replace('"archive_ids": ["hs-tutor-2"]', '"archive_ids": []'),
+            "missing_archive_reference",
+        ),
+    ],
+)
+async def test_invalid_or_incomplete_memory_is_rejected(monkeypatch, caplog, invalid, reason):
+    async def stream(self, **kwargs):
+        await self._emit_trace_event(
+            {"event": "llm_call", "state": "running", "model": "summary-task-model"}
+        )
+        kwargs["outcome"].usage = {"prompt_tokens": 300, "completion_tokens": 50}
         yield invalid
 
     monkeypatch.setattr(_ContextSummaryAgent, "stream_llm", stream)
@@ -192,6 +207,14 @@ async def test_invalid_or_incomplete_memory_is_rejected(monkeypatch, invalid):
             summary_budget=4096,
             replay_request={"rows": records(1, 1), "messages": [], "tools": []},
         )
+    assert f"reason={reason} model=summary-task-model" in caplog.text
+    assert "elapsed_ms=" in caplog.text
+    assert "estimated_input_tokens=" in caplog.text
+    assert "estimated_reply_tokens=" in caplog.text
+    assert "provider_prompt_tokens=300 provider_completion_tokens=50" in caplog.text
+    assert "private non-JSON reply" not in caplog.text
+    assert "I confuse A with B" not in caplog.text
+    assert "hs-tutor-999" not in caplog.text
 
 
 @pytest.mark.asyncio
@@ -247,12 +270,15 @@ async def test_complete_json_near_budget_is_not_cut_as_an_incomplete_sentence(mo
 
 
 @pytest.mark.asyncio
-async def test_provider_truncated_memory_never_advances_watermark_even_if_json_parses(monkeypatch):
+async def test_provider_truncated_memory_never_advances_watermark_even_if_json_parses(
+    monkeypatch, caplog
+):
     from deeptutor.capabilities.mastery.memory import archive_id
     from deeptutor.services.session.model_history import history_groups
 
     async def stream(_self, **kwargs):
         kwargs["outcome"].finish_reason = "max_tokens"
+        kwargs["outcome"].usage = {"completion_tokens": 8000, "reasoning_tokens": 7800}
         yield memory([archive_id(g) for g in history_groups(builder._summary_rows)])
 
     monkeypatch.setattr(_ContextSummaryAgent, "stream_llm", stream)
@@ -265,6 +291,9 @@ async def test_provider_truncated_memory_never_advances_watermark_even_if_json_p
     store.update_summary.assert_not_awaited()
     assert result.token_count <= result.budget
     assert "example 0 failed" in json.dumps(result.history_sources)
+    assert "reason=output_truncated" in caplog.text
+    assert "provider_completion_tokens=8000 reasoning_tokens=7800" in caplog.text
+    assert "remains uncertain" not in caplog.text
 
 
 @pytest.mark.asyncio
@@ -362,6 +391,25 @@ async def test_one_oversized_exchange_uses_exact_recall_without_cutting_tool_pai
         for message in result.model_history
     )
     assert rows == original
+
+
+@pytest.mark.asyncio
+async def test_oversized_oldest_exchange_is_logged_when_background_update_is_skipped(caplog):
+    store = store_for(records(n=2, padding=40000))
+    builder = MasteryContextBuilder(store, defer_summary=True)
+    builder._schedule_summary = MagicMock()
+    result = await builder.build(
+        session_id="s",
+        llm_config=SimpleNamespace(model="gpt-6.1-sol", context_window=272000, max_tokens=8192),
+    )
+    builder._schedule_summary.assert_not_called()
+    store.update_summary.assert_not_awaited()
+    assert result.token_count <= result.budget
+    assert "hs-tutor-2" in result.history_sources
+    assert "reason=oldest_exchange_exceeds_budget model=not_called" in caplog.text
+    assert "estimated_input_tokens=" in caplog.text
+    assert "input_budget=20000" in caplog.text
+    assert "distinct-0" not in caplog.text
 
 
 @pytest.mark.asyncio

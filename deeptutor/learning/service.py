@@ -2861,18 +2861,28 @@ class LearningService:
 
             try:
                 packet = assessment_evidence(tx.progress, kp_id)
-                validate_evidence(self._store, tx.progress, kp_id, packet)
-                if _assessment:
+                if _assessment and _assessment.get("ungrounded"):
+                    # No source packet authorized this grade, so only the
+                    # objective must still match.
                     from deeptutor.learning.lesson_evidence import objective_fingerprint
-                    from deeptutor.learning.semantic_assessment import fingerprint
 
-                    if (
-                        objective_fingerprint(tx.progress, kp_id) != _assessment["objective"]
-                        or fingerprint(packet) != _assessment["source"]
-                    ):
+                    if objective_fingerprint(tx.progress, kp_id) != _assessment["objective"]:
                         raise MasteryInteractionError(
-                            "Objective or source changed during assessment; retry."
+                            "Objective changed during assessment; retry."
                         )
+                else:
+                    validate_evidence(self._store, tx.progress, kp_id, packet)
+                    if _assessment:
+                        from deeptutor.learning.lesson_evidence import objective_fingerprint
+                        from deeptutor.learning.semantic_assessment import fingerprint
+
+                        if (
+                            objective_fingerprint(tx.progress, kp_id) != _assessment["objective"]
+                            or fingerprint(packet) != _assessment["source"]
+                        ):
+                            raise MasteryInteractionError(
+                                "Objective or source changed during assessment; retry."
+                            )
             except LessonUnavailable as exc:
                 raise MasteryInteractionError(str(exc)) from exc
             applied = self.record_qualitative_in_memory(
@@ -3119,9 +3129,14 @@ class LearningService:
             # replies that have not necessarily gone through the grader yet.
             if recent_learner_answer and len(recent_learner_answer) <= limit:
                 answer = recent_learner_answer
-        evidence = assessment_evidence(progress, kp_id)
+        # ``ungrounded`` means the selected material was already checked this
+        # turn and does not cover the objective. Grade from the model's own
+        # knowledge instead of refusing the learner a verdict they earned.
+        ungrounded = bool(kwargs.pop("ungrounded", False))
+        evidence = {} if ungrounded else assessment_evidence(progress, kp_id)
         try:
-            validate_evidence(self._store, progress, kp_id, evidence)
+            if not ungrounded:
+                validate_evidence(self._store, progress, kp_id, evidence)
             objective = objective_fingerprint(progress, kp_id)
             decisions = await semantic.judge_answers(
                 config,
@@ -3168,6 +3183,7 @@ class LearningService:
                 "objective": objective,
                 "source": semantic.fingerprint(evidence),
                 "receipt": receipt,
+                "ungrounded": ungrounded,
             },
             **kwargs,
         )

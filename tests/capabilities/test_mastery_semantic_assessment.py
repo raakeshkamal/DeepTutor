@@ -1133,9 +1133,10 @@ async def test_blocked_assess_spends_one_objective_build_then_grades(service, mo
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("mode", ["incomplete", "unavailable"])
-async def test_uncoverable_objective_defers_instead_of_looping(service, monkeypatch, mode):
+async def test_uncoverable_objective_grades_from_general_knowledge(service, monkeypatch, mode):
     from deeptutor.capabilities.mastery import tools
     from deeptutor.learning import lesson_evidence
+    from deeptutor.learning import semantic_assessment as semantic
     from deeptutor.learning.models import KnowledgeType
 
     def seed(tx):
@@ -1151,6 +1152,7 @@ async def test_uncoverable_objective_defers_instead_of_looping(service, monkeypa
     service.store.mutate("p", seed)
     monkeypatch.setattr(lesson_evidence, "selected_scope", lambda *args, **kwargs: {"kb": None})
     builds = []
+    graded_evidence = []
 
     async def fake_prepare(store, path_id, kp_id, config, stream=None, **kwargs):
         builds.append(kwargs.get("focus"))
@@ -1170,7 +1172,16 @@ async def test_uncoverable_objective_defers_instead_of_looping(service, monkeypa
             "sources": [],
         }
 
+    async def judge(_config, items):
+        graded_evidence.append(items[0]["source_evidence"])
+        return {
+            "kp1": semantic.Verdict(
+                result="correct", confidence=0.9, feedback="Alpha comes first."
+            )
+        }
+
     monkeypatch.setattr(lesson_evidence, "prepare_lesson", fake_prepare)
+    monkeypatch.setattr(semantic, "judge_answers", judge)
     monkeypatch.setattr(tools, "_new_service", lambda: service)
     monkeypatch.setattr(tools, "_ASSESS_PACKET_BUILDS", {})
     kwargs = dict(
@@ -1180,16 +1191,16 @@ async def test_uncoverable_objective_defers_instead_of_looping(service, monkeypa
         _turn_id="turn-2",
         _learner_message="alpha comes first",
     )
+    # The learner still gets a verdict; the turn never stalls on the search.
     first = await tools.MasteryAssessTool().execute(**kwargs)
-    assert first.success is False
-    assert "mastery_defer_objective" in first.content
-    if mode == "incomplete":
-        assert "the velocity relation on page 71" in first.content
-    else:
-        assert "No useful page-located matches" in first.content
+    assert first.success is True, first.content
+    assert "Alpha comes first." in first.content
+    assert "general knowledge" in first.content
+    # Graded with no source packet, so the absence of sources cannot lower it.
+    assert graded_evidence == [{}]
+    # A retry in the same turn reuses the saved verdict and rebuilds nothing.
     second = await tools.MasteryAssessTool().execute(**kwargs)
-    assert second.success is False
-    assert "already attempted" in second.content
+    assert second.success is True
     assert len(builds) == 1
 
 

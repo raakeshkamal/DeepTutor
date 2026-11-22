@@ -518,6 +518,7 @@ async def _reject_if_args_missing(
 
 RESERVED_ARGUMENT_NAMES = frozenset(
     {
+        "_assessment_recorded",
         "_attached_kb_names",
         "_bind_active_mode",
         "_bind_active_path",

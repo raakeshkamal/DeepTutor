@@ -242,6 +242,12 @@ class MasteryLoopCapability:
                     "mastery_learner_message", context.user_message or ""
                 )
                 updated["_learner_message_id"] = context.metadata.get("mastery_learner_message_id")
+
+                def assessment_recorded(receipt):
+                    if context.metadata.get("mastery_path_id") == path_id:
+                        state.setdefault("final_assessment", receipt)
+
+                updated["_assessment_recorded"] = assessment_recorded
             if tool_name == "mastery_prepare_lesson":
                 updated["_language"] = context.language
                 from deeptutor.learning.policy import next_objective
@@ -362,7 +368,7 @@ class MasteryLoopCapability:
         return None
 
     def final_text_override(self, context: UnifiedContext, final_text: str) -> str | None:
-        """End the turn on the card once a question has been posed.
+        """End the turn on a recorded qualitative grade or a posted card.
 
         A posed question used to park the turn inside ``pause_for_user``: the
         runtime moved it to ``waiting_input`` and waited on a reply queue, so
@@ -385,9 +391,10 @@ class MasteryLoopCapability:
         if not self.is_active(context):
             return None
         state = context.extension("mastery")
+        assessment = state.pop("final_assessment", None)
         notice = ""
         if state.get("profile_write_pending"):
-            if not final_text.strip() and not state.get("card_posted"):
+            if not final_text.strip() and not state.get("card_posted") and not assessment:
                 # This hook also runs after every tool batch. An optional
                 # storage notice cannot end work still in progress; append it
                 # only to a real final answer or an accepted question card.
@@ -409,6 +416,10 @@ class MasteryLoopCapability:
             content = final_text if override is None else override
             return notice + ("\n\n" + content if content.strip() else "")
 
+        if assessment:
+            # The grader already wrote feedback. Publish that receipt, not a
+            # new model answer that can delay or omit it while preparing a lesson.
+            return with_notice(_assessment_reply(context.language, assessment))
         if not state.get("card_posted"):
             return with_notice(None)
         if final_text.strip():
@@ -632,6 +643,19 @@ class MasteryLoopCapability:
                 "put it last."
             )
         return "\n".join(lines)
+
+
+def _assessment_reply(language: str, receipt: dict[str, Any]) -> str:
+    from deeptutor.services.prompt import get_prompt_manager
+
+    pack = get_prompt_manager().load_prompts("mastery", "mastery_loop", language)
+    labels = pack["assessment_reply"]
+    parts = [f"**{labels[receipt['result']]}**", str(receipt["feedback"]).strip()]
+    if receipt["mastered"]:
+        parts.append(labels["complete" if receipt["next"]["action"] == "complete" else "next"])
+    elif receipt["result"] != "correct":
+        parts.append(labels["retry"])
+    return "\n\n".join(part for part in parts if part)
 
 
 def _card_end_marker(context: UnifiedContext) -> Callable[[], None]:

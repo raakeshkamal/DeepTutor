@@ -191,7 +191,9 @@ class MasteryContextBuilder(ContextBuilder):
 
     def _finalize_summary(self, summary: str, summary_budget: int, outcome: StreamOutcome) -> str:
         # JSON is atomic: prose-tail trimming destroys a complete object.
+        self._summary_usage = outcome.usage
         if outcome.truncated:
+            self._truncated_reply_tokens = count_tokens(summary)
             raise MemoryTruncated(
                 "Tutoring memory: provider truncated the response at its "
                 f"{SUMMARY_GENERATION_CEILING}-token output allowance"
@@ -213,26 +215,37 @@ class MasteryContextBuilder(ContextBuilder):
         limit = getattr(self, "_fold_budget", None)
         if limit is None:
             return older, recent
+        started = time.monotonic()
         groups = history_groups(older)
         archived = [_archived_messages(g) if g and "id" in g[-1] else [] for g in groups]
 
-        def fits(count):
+        def request_tokens(count):
             sent = [message for part in archived[:count] for message in part]
             material = _memory_material(self._fold_prior, sent)
-            return count_tokens(material) + self._fold_overhead <= limit
+            return count_tokens(material) + self._fold_overhead
 
         # Binary search for the longest fitting prefix; each exchange is
         # archived once, not once per probe.
         start, end = 0, len(groups)
+        last_request_tokens = 0
         while start < end:
             middle = (start + end + 1) // 2
-            if fits(middle):
+            last_request_tokens = request_tokens(middle)
+            if last_request_tokens <= limit:
                 start = middle
             else:
                 end = middle - 1
         # Not even the oldest exchange fits: _summarize() sends nothing, and the
         # exchange stays in exact recall without moving the watermark.
         self._fold_skipped = bool(groups) and start == 0
+        if self._fold_skipped:
+            logger.warning(
+                "Tutoring memory skipped: reason=oldest_exchange_exceeds_budget model=not_called "
+                "estimated_input_tokens=%d input_budget=%d reply_tokens=0 elapsed_ms=%.1f",
+                last_request_tokens,
+                limit,
+                (time.monotonic() - started) * 1000,
+            )
         folded = sum(len(group) for group in groups[:start])
         return older[:folded], older[folded:] + recent
 
@@ -350,6 +363,48 @@ class MasteryContextBuilder(ContextBuilder):
             # The same call just came back truncated; skip it and let the
             # turn run on the bounded history it already degrades to.
             raise MemoryTruncated("Tutoring memory: skipped after a recent truncated response")
+        started = time.monotonic()
+        model = "unknown"
+        self._summary_usage = {}
+        self._truncated_reply_tokens = None
+        original_on_event = kwargs.pop("on_event", None)
+
+        async def capture_model(event):
+            nonlocal model
+            if event.metadata.get("call_state") == "running":
+                model = event.metadata.get("model") or model
+            if original_on_event is not None:
+                await original_on_event(event)
+
+        def log_failure(reason, reply_tokens=None):
+            # Only fixed reason codes, model metadata and numeric measurements.
+            # Exception text and model input/output may contain the transcript.
+            def usage_count(key):
+                value = self._summary_usage.get(key)
+                return value if type(value) is int else None
+
+            elapsed_ms = (time.monotonic() - started) * 1000
+            estimated_input = (
+                count_tokens(material)
+                + count_tokens(self._summary_instruction(kwargs.get("language", "en")))
+                + _REQUEST_RESERVE
+            )
+            logger.warning(
+                "Tutoring memory failed: reason=%s model=%s elapsed_ms=%.1f "
+                "estimated_input_tokens=%d estimated_reply_tokens=%s "
+                "provider_prompt_tokens=%s provider_completion_tokens=%s reasoning_tokens=%s "
+                "output_limit=%d",
+                reason,
+                model,
+                elapsed_ms,
+                estimated_input,
+                reply_tokens,
+                usage_count("prompt_tokens"),
+                usage_count("completion_tokens"),
+                usage_count("reasoning_tokens"),
+                SUMMARY_GENERATION_CEILING,
+            )
+
         # A summary task needs learning evidence, not the full tutor persona,
         # 47 tool schemas, encrypted provider reasoning or current page pixels.
         try:
@@ -358,11 +413,17 @@ class MasteryContextBuilder(ContextBuilder):
                 summary_budget=summary_budget,
                 generation_budget=SUMMARY_GENERATION_CEILING,
                 replay_request=None,
+                on_event=capture_model,
                 **kwargs,
             )
         except MemoryTruncated:
             _start_backoff(backoff_key)
+            log_failure("output_truncated", self._truncated_reply_tokens)
             raise
+        except Exception:
+            log_failure("summary_request_failed")
+            raise
+        failure_code = "invalid_memory_format"
         try:
             data = json.loads(summary)
             if not isinstance(data, dict) or data.get("version") != 1:
@@ -371,6 +432,7 @@ class MasteryContextBuilder(ContextBuilder):
             if not isinstance(covered, list) or not all(isinstance(s, str) for s in covered):
                 raise ValueError("Invalid memory coverage")
             if set(covered) != expected:
+                failure_code = "archive_coverage_mismatch"
                 raise ValueError("Memory omitted or invented an archived exchange")
             known = getattr(self, "_archive_ids", expected)
             referenced = set()
@@ -389,9 +451,11 @@ class MasteryContextBuilder(ContextBuilder):
                     if not isinstance(ids, list) or not all(
                         isinstance(s, str) and s in known for s in ids
                     ):
+                        failure_code = "invalid_archive_reference"
                         raise ValueError("Memory references an unavailable archive")
                     referenced.update(ids)
             if not expected <= referenced:
+                failure_code = "missing_archive_reference"
                 raise ValueError("Archived exchanges lack retained learning notes")
             result = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
             # The 4k summary budget is not a transport limit. Allow up
@@ -399,9 +463,12 @@ class MasteryContextBuilder(ContextBuilder):
             # allocation still fits the 20k history plan. OAuth providers may
             # ignore max_tokens, so the compact payload has a hard ceiling.
             if count_tokens(result) > min(int(summary_budget * 1.5), 6144):
+                failure_code = "retained_budget_exceeded"
                 raise ValueError("Complete tutoring memory exceeded its retained budget")
             return result, events
         except (ValueError, TypeError) as exc:
             # ContextBuilder retries on a later turn; its watermark stays put.
-            reason = "invalid JSON" if isinstance(exc, json.JSONDecodeError) else str(exc)
+            invalid_json = isinstance(exc, json.JSONDecodeError)
+            log_failure("invalid_json" if invalid_json else failure_code, count_tokens(summary))
+            reason = "invalid JSON" if invalid_json else str(exc)
             raise ValueError(f"Tutoring memory: {reason}") from exc
