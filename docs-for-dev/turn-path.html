@@ -1,0 +1,1053 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DeepTutor — one turn, end to end</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --bg-soft: #f6f7f9;
+    --card: #ffffff;
+    --ink: #14161a;
+    --ink-2: #3d4350;
+    --muted: #6b7280;
+    --faint: #9aa1ad;
+    --line: #e3e6eb;
+    --line-2: #eef0f3;
+    --accent: #0f766e;
+    --accent-soft: #e6f4f1;
+    --warn: #b45309;
+    --warn-soft: #fdf3e3;
+    --code-bg: #f7f8fa;
+    --shadow: 0 1px 2px rgba(16, 24, 40, .05), 0 8px 24px -12px rgba(16, 24, 40, .12);
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1115;
+      --bg-soft: #14171c;
+      --card: #161a20;
+      --ink: #e9ecf1;
+      --ink-2: #c3c9d4;
+      --muted: #98a0ae;
+      --faint: #6c7583;
+      --line: #262c35;
+      --line-2: #1e232b;
+      --accent: #4fd1c5;
+      --accent-soft: #12312e;
+      --warn: #f0b26a;
+      --warn-soft: #2a2113;
+      --code-bg: #12161c;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px -12px rgba(0, 0, 0, .6);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 24px; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; text-underline-offset: 3px; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+
+  .wrap { display: grid; grid-template-columns: 232px minmax(0, 1fr); gap: 0; max-width: 1240px; margin: 0 auto; }
+
+  /* ---------- nav ---------- */
+  nav {
+    position: sticky; top: 0; align-self: start; height: 100vh;
+    padding: 28px 18px 28px 24px; border-right: 1px solid var(--line-2);
+    overflow-y: auto; font-size: 13.5px;
+  }
+  nav .brand { font-weight: 650; letter-spacing: -.01em; font-size: 14px; margin-bottom: 2px; }
+  nav .brand span { color: var(--accent); }
+  nav .sub { color: var(--faint); font-size: 11.5px; margin-bottom: 20px; font-family: var(--mono); }
+  nav ol { list-style: none; padding: 0; margin: 0; }
+  nav li { margin: 0; }
+  nav a {
+    display: block; padding: 5px 9px; border-radius: 6px; color: var(--ink-2);
+    border-left: 2px solid transparent; margin-left: -2px;
+  }
+  nav a:hover { background: var(--bg-soft); text-decoration: none; }
+  nav a.active { color: var(--accent); border-left-color: var(--accent); background: var(--accent-soft); font-weight: 550; }
+  nav .navfoot { margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--line-2); color: var(--faint); font-size: 11.5px; line-height: 1.5; }
+
+  /* ---------- main ---------- */
+  main { padding: 0 48px 120px; min-width: 0; }
+  header.hero { padding: 56px 0 36px; border-bottom: 1px solid var(--line-2); }
+  .eyebrow { font-family: var(--mono); font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); margin-bottom: 14px; }
+  h1 { font-size: clamp(30px, 4vw, 44px); line-height: 1.1; letter-spacing: -.025em; margin: 0 0 16px; font-weight: 680; }
+  .lede { font-size: 18.5px; line-height: 1.6; color: var(--ink-2); max-width: 68ch; margin: 0 0 26px; }
+  .stats { display: flex; flex-wrap: wrap; gap: 10px; }
+  .stat { border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; background: var(--card); box-shadow: var(--shadow); }
+  .stat b { display: block; font-size: 18px; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .stat span { font-size: 11.5px; color: var(--muted); }
+
+  section { padding: 46px 0 8px; border-bottom: 1px solid var(--line-2); }
+  section:last-of-type { border-bottom: 0; }
+  h2 { font-size: 25px; letter-spacing: -.02em; margin: 0 0 6px; font-weight: 650; display: flex; align-items: baseline; gap: 12px; }
+  h2 .num { font-family: var(--mono); font-size: 12px; color: var(--faint); font-weight: 400; letter-spacing: .06em; }
+  .sectionnote { color: var(--muted); font-size: 14.5px; margin: 0 0 26px; max-width: 72ch; }
+  h3 { font-size: 16.5px; margin: 34px 0 10px; letter-spacing: -.01em; font-weight: 620; }
+  p { margin: 0 0 14px; max-width: 72ch; }
+  ul, ol { margin: 0 0 16px; padding-left: 22px; max-width: 72ch; }
+  li { margin-bottom: 7px; }
+  code { font-family: var(--mono); font-size: .875em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; border: 1px solid var(--line-2); }
+  pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; overflow-x: auto; font-size: 12.8px; line-height: 1.6; margin: 0 0 16px; }
+  pre code { background: none; border: 0; padding: 0; font-size: inherit; }
+  .filecap { font-family: var(--mono); font-size: 11.5px; color: var(--muted); margin: 0 0 6px; display: flex; justify-content: space-between; gap: 12px; }
+  .filecap em { font-style: normal; color: var(--faint); }
+
+  /* ---------- cards ---------- */
+  .grid { display: grid; gap: 14px; }
+  .grid.two { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  .grid.three { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 16px 18px; box-shadow: var(--shadow);
+  }
+  .card h4 { margin: 0 0 6px; font-size: 14.5px; font-weight: 620; letter-spacing: -.005em; display: flex; gap: 8px; align-items: center; }
+  .card p { margin: 0; font-size: 13.8px; color: var(--ink-2); line-height: 1.58; max-width: none; }
+  .card .path { font-family: var(--mono); font-size: 11.5px; color: var(--faint); margin-top: 9px; display: block; word-break: break-all; }
+  .badge {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .07em; text-transform: uppercase;
+    padding: 2px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent);
+    border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent); font-weight: 500; white-space: nowrap;
+  }
+  .badge.warn { background: var(--warn-soft); color: var(--warn); border-color: color-mix(in srgb, var(--warn) 30%, transparent); }
+  .badge.grey { background: var(--bg-soft); color: var(--muted); border-color: var(--line); }
+
+  /* ---------- diagram ---------- */
+  figure { margin: 0 0 22px; }
+  .diagram { background: var(--bg-soft); border: 1px solid var(--line); border-radius: 14px; padding: 18px 16px 10px; overflow-x: auto; }
+  .diagram svg { display: block; width: 100%; min-width: 640px; height: auto; }
+  figcaption { font-size: 12.8px; color: var(--muted); margin-top: 10px; }
+  .n-title { font: 600 14px var(--sans); fill: var(--ink); }
+  .n-path { font: 11.3px var(--mono); fill: var(--muted); }
+  .n-layer { font: 500 9.6px var(--mono); fill: var(--faint); letter-spacing: .1em; }
+  .n-side { font: 11.5px var(--mono); fill: var(--faint); }
+  .n-note { font: 10.8px var(--mono); fill: var(--muted); }
+  .n-box { fill: var(--card); stroke: var(--line); stroke-width: 1; }
+  .n-box.hot { stroke: var(--accent); stroke-width: 1.6; }
+  .n-bar { fill: var(--accent); opacity: .85; }
+  .n-arrow { stroke: var(--faint); stroke-width: 1.3; fill: none; }
+  .n-ret { stroke: var(--accent); stroke-width: 1.3; fill: none; stroke-dasharray: 5 4; opacity: .75; }
+
+  /* ---------- timeline ---------- */
+  .timeline { list-style: none; padding: 0; margin: 6px 0 8px; position: relative; }
+  .timeline::before { content: ""; position: absolute; left: 9px; top: 8px; bottom: 8px; width: 1.5px; background: var(--line); }
+  .timeline li { position: relative; padding: 0 0 20px 34px; margin: 0; max-width: none; }
+  .timeline li::before {
+    content: ""; position: absolute; left: 4.5px; top: 7px; width: 10px; height: 10px;
+    border-radius: 50%; background: var(--card); border: 2px solid var(--faint);
+  }
+  .timeline li.hot::before { border-color: var(--accent); background: var(--accent); }
+  .timeline .t { font-weight: 600; font-size: 14px; display: block; }
+  .timeline .d { font-size: 13.5px; color: var(--ink-2); display: block; margin-top: 2px; }
+  .timeline .f { font-family: var(--mono); font-size: 11.4px; color: var(--faint); display: block; margin-top: 3px; }
+
+  /* ---------- table ---------- */
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; margin: 0 0 20px; background: var(--card); }
+  table { border-collapse: collapse; width: 100%; font-size: 13.6px; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line-2); vertical-align: top; }
+  th { font-size: 11.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 600; background: var(--bg-soft); white-space: nowrap; }
+  tr:last-child td { border-bottom: 0; }
+  td code { white-space: nowrap; }
+
+  /* ---------- bars ---------- */
+  .bars { margin: 8px 0 4px; }
+  .bar { display: grid; grid-template-columns: 230px 1fr 56px; gap: 12px; align-items: center; margin-bottom: 7px; font-size: 12.8px; }
+  .bar .name { font-family: var(--mono); font-size: 11.8px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar .track { background: var(--bg-soft); border-radius: 4px; height: 16px; overflow: hidden; border: 1px solid var(--line-2); }
+  .bar .fill { height: 100%; background: color-mix(in srgb, var(--accent) 55%, transparent); border-radius: 3px; }
+  .bar .val { font-family: var(--mono); font-size: 11.4px; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+
+  /* ---------- details ---------- */
+  details { border: 1px solid var(--line); border-radius: 10px; padding: 0 16px; margin: 0 0 12px; background: var(--card); }
+  details[open] { padding-bottom: 6px; }
+  summary { cursor: pointer; padding: 13px 0; font-weight: 560; font-size: 14.5px; list-style: none; display: flex; gap: 10px; align-items: baseline; }
+  summary::-webkit-details-marker { display: none; }
+  summary::before { content: "+"; font-family: var(--mono); color: var(--faint); font-size: 14px; }
+  details[open] summary::before { content: "−"; }
+  summary:hover { color: var(--accent); }
+  details > p, details > ul, details > pre { font-size: 14px; }
+
+  /* ---------- gotcha ---------- */
+  .gotcha { border-left: 3px solid var(--warn); background: var(--warn-soft); border-radius: 0 10px 10px 0; padding: 13px 16px; margin: 0 0 12px; }
+  .gotcha h4 { margin: 0 0 4px; font-size: 14px; font-weight: 620; }
+  .gotcha p { margin: 0; font-size: 13.6px; color: var(--ink-2); max-width: none; }
+  .gotcha .ref { font-family: var(--mono); font-size: 11.3px; color: var(--muted); display: block; margin-top: 6px; }
+
+  /* ---------- prompt ---------- */
+  .prompt { position: relative; }
+  .prompt pre { padding-right: 74px; }
+  .copy {
+    position: absolute; top: 8px; right: 8px; font: 500 11.5px var(--sans);
+    padding: 4px 10px; border-radius: 6px; border: 1px solid var(--line);
+    background: var(--card); color: var(--muted); cursor: pointer;
+  }
+  .copy:hover { color: var(--accent); border-color: var(--accent); }
+  .copy.done { color: var(--accent); border-color: var(--accent); }
+
+  footer { padding: 40px 0 0; color: var(--faint); font-size: 12.8px; }
+
+  @media (max-width: 900px) {
+    .wrap { grid-template-columns: 1fr; }
+    nav { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line-2); padding: 20px; }
+    nav ol { columns: 2; column-gap: 12px; }
+    nav .navfoot { display: none; }
+    main { padding: 0 20px 80px; }
+    header.hero { padding: 32px 0 26px; }
+    .bar { grid-template-columns: 130px 1fr 48px; }
+  }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  @media print {
+    nav, .copy { display: none; }
+    .wrap { display: block; }
+    main { padding: 0; }
+    section { break-inside: avoid; }
+    details { break-inside: avoid; }
+    details:not([open]) > *:not(summary) { display: block; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<nav>
+  <div class="brand">DeepTutor <span>/</span> turn path</div>
+  <div class="sub">1,181 py · 337k lines</div>
+  <ol>
+    <li><a href="#tldr">The short version</a></li>
+    <li><a href="#spine">The spine, in one picture</a></li>
+    <li><a href="#layers">Layer by layer</a></li>
+    <li><a href="#lifecycle">Life of one turn</a></li>
+    <li><a href="#events">Events and replay</a></li>
+    <li><a href="#loops">Two loops, one name</a></li>
+    <li><a href="#gotchas">Traps</a></li>
+    <li><a href="#where">Where the weight is</a></li>
+    <li><a href="#read">Reading order</a></li>
+    <li><a href="#prompts">Prompts</a></li>
+  </ol>
+  <div class="navfoot">
+    Every claim here comes from reading the source.<br>
+    Paths and line counts checked against this checkout.
+  </div>
+</nav>
+
+<main>
+
+<header class="hero">
+  <div class="eyebrow">Architecture map · visual companion to ARCHITECTURE.md</div>
+  <h1>One turn, end to end</h1>
+  <p class="lede">
+    A message arrives on a socket. Eleven capabilities compete to answer it. Six services assemble
+    its context. Hundreds of events fly back out. Here is exactly which file does what, in what order,
+    and where the sharp edges are.
+  </p>
+  <div class="stats">
+    <div class="stat"><b>11</b><span>capabilities</span></div>
+    <div class="stat"><b>37</b><span>built-in tools</span></div>
+    <div class="stat"><b>7</b><span>layers on the path</span></div>
+    <div class="stat"><b>15</b><span>event types</span></div>
+    <div class="stat"><b>337,522</b><span>lines of Python</span></div>
+  </div>
+</header>
+
+<!-- ============================================ 1 -->
+<section id="tldr">
+  <h2><span class="num">01</span> The short version</h2>
+  <p class="sectionnote">If you read nothing else, read this.</p>
+
+  <p>
+    Every entry point — CLI, WebSocket, Python SDK — calls the same function first:
+    <code>TurnApplicationService.start_turn</code>. That service is the only writer of turn state.
+    It creates a durable row, takes a lease, and spawns a task.
+  </p>
+  <p>
+    The task builds a <code>UnifiedContext</code>, hands it to <code>TurnEngine</code>, which hands it
+    to <code>ChatOrchestrator</code>, which picks a capability by name. The capability runs and emits
+    <code>StreamEvent</code> objects into a per-turn <code>StreamBus</code>.
+  </p>
+  <p>
+    The bus is the seam. The orchestrator writes into it. Adapters read out of it. Nothing else
+    couples the two sides. Events persist as they are published, so a reconnecting client replays from
+    a sequence number instead of starting over.
+  </p>
+
+  <div class="grid three" style="margin-top:22px">
+    <div class="card">
+      <h4>Three entry points</h4>
+      <p>WebSocket <code>/ws</code>, Typer CLI, SDK facade. All three call the same application service.</p>
+      <span class="path">api/routers/unified_ws.py · deeptutor_cli/main.py · app/facade.py</span>
+    </div>
+    <div class="card">
+      <h4>One router</h4>
+      <p><code>ChatOrchestrator.handle</code> resolves the capability name and owns the bus lifecycle.</p>
+      <span class="path">runtime/orchestrator.py</span>
+    </div>
+    <div class="card">
+      <h4>One data object</h4>
+      <p><code>UnifiedContext</code> carries everything a capability needs for one turn. No globals.</p>
+      <span class="path">core/context.py</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================ 2 -->
+<section id="spine">
+  <h2><span class="num">02</span> The spine, in one picture</h2>
+  <p class="sectionnote">
+    Read top to bottom. The solid arrows are the call path. The dashed line is the event path coming back.
+  </p>
+
+  <figure>
+    <div class="diagram">
+      <svg viewBox="0 0 980 660" role="img" aria-label="Layer diagram: entry point to tools, with a stream return path">
+        <defs>
+          <marker id="a1" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--faint)"/>
+          </marker>
+          <marker id="a2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent)"/>
+          </marker>
+        </defs>
+
+        <!-- layer gutter -->
+        <text class="n-layer" x="8" y="48">ADAPTER</text>
+        <text class="n-layer" x="8" y="138">APPLICATION</text>
+        <text class="n-layer" x="8" y="228">RUNTIME</text>
+        <text class="n-layer" x="8" y="318">ENGINE</text>
+        <text class="n-layer" x="8" y="408">ROUTER</text>
+        <text class="n-layer" x="8" y="498">CAPABILITY</text>
+        <text class="n-layer" x="8" y="588">TOOLS</text>
+
+        <!-- 1 -->
+        <rect class="n-box" x="124" y="14" width="500" height="58" rx="9"/>
+        <rect class="n-bar" x="124" y="14" width="4" height="58" rx="2"/>
+        <text class="n-title" x="144" y="39">Entry point</text>
+        <text class="n-path" x="144" y="59">WS /ws · CLI · SDK — all call start_turn</text>
+
+        <!-- 2 -->
+        <rect class="n-box" x="124" y="104" width="500" height="58" rx="9"/>
+        <rect class="n-bar" x="124" y="104" width="4" height="58" rx="2"/>
+        <text class="n-title" x="144" y="129">TurnApplicationService</text>
+        <text class="n-path" x="144" y="149">durable row · lease · replay  (683 lines)</text>
+
+        <!-- 3 -->
+        <rect class="n-box" x="124" y="194" width="500" height="58" rx="9"/>
+        <rect class="n-bar" x="124" y="194" width="4" height="58" rx="2"/>
+        <text class="n-title" x="144" y="219">TurnRuntimeManager</text>
+        <text class="n-path" x="144" y="239">6 mixins · context assembly · 1,600-line executor</text>
+
+        <!-- 4 -->
+        <rect class="n-box" x="124" y="284" width="500" height="58" rx="9"/>
+        <rect class="n-bar" x="124" y="284" width="4" height="58" rx="2"/>
+        <text class="n-title" x="144" y="309">TurnEngine.execute</text>
+        <text class="n-path" x="144" y="329">one job: open the orchestrator  (40 lines)</text>
+
+        <!-- 5 -->
+        <rect class="n-box hot" x="124" y="374" width="500" height="58" rx="9"/>
+        <rect class="n-bar" x="124" y="374" width="4" height="58" rx="2"/>
+        <text class="n-title" x="144" y="399">ChatOrchestrator.handle</text>
+        <text class="n-path" x="144" y="419">resolve capability · own StreamBus · spawn task</text>
+
+        <!-- 6 -->
+        <rect class="n-box" x="124" y="464" width="500" height="58" rx="9"/>
+        <rect class="n-bar" x="124" y="464" width="4" height="58" rx="2"/>
+        <text class="n-title" x="144" y="489">TurnCapability.run(context, stream)</text>
+        <text class="n-path" x="144" y="509">stages → events → one final result</text>
+
+        <!-- 7 -->
+        <rect class="n-box" x="124" y="554" width="500" height="58" rx="9"/>
+        <rect class="n-bar" x="124" y="554" width="4" height="58" rx="2"/>
+        <text class="n-title" x="144" y="579">ToolRegistry + gated mount</text>
+        <text class="n-path" x="144" y="599">8 toggles · 29 gated built-ins · one exec surface</text>
+
+        <!-- forward arrows -->
+        <line class="n-arrow" x1="374" y1="72" x2="374" y2="99" marker-end="url(#a1)"/>
+        <line class="n-arrow" x1="374" y1="162" x2="374" y2="189" marker-end="url(#a1)"/>
+        <line class="n-arrow" x1="374" y1="252" x2="374" y2="279" marker-end="url(#a1)"/>
+        <line class="n-arrow" x1="374" y1="342" x2="374" y2="369" marker-end="url(#a1)"/>
+        <line class="n-arrow" x1="374" y1="432" x2="374" y2="459" marker-end="url(#a1)"/>
+        <line class="n-arrow" x1="374" y1="522" x2="374" y2="549" marker-end="url(#a1)"/>
+
+        <!-- return path -->
+        <path class="n-ret" d="M 624 583 H 742 V 133 H 630" marker-end="url(#a2)"/>
+        <text class="n-side" x="756" y="300">StreamEvent</text>
+        <text class="n-side" x="756" y="320">persist + replay</text>
+        <text class="n-side" x="756" y="340">to the client</text>
+        <text class="n-note" x="756" y="372">seq ordered</text>
+        <text class="n-note" x="756" y="390">never buffered</text>
+        <text class="n-note" x="756" y="408">in memory only</text>
+      </svg>
+    </div>
+    <figcaption>
+      The orchestrator is the only box that both reads the call path and writes the event path.
+      That is why it is the file to understand first.
+    </figcaption>
+  </figure>
+
+  <p>
+    Two things sit outside the spine. <strong>Coordination</strong> owns leases, commands, and the
+    event journal. <strong>The session store</strong> owns conversations, messages, and turn rows.
+    The application service touches both. Capabilities touch neither.
+  </p>
+</section>
+
+<!-- ============================================ 3 -->
+<section id="layers">
+  <h2><span class="num">03</span> Layer by layer</h2>
+  <p class="sectionnote">
+    Each card answers: what does this layer add that the layer below cannot do?
+  </p>
+
+  <div class="grid two">
+    <div class="card">
+      <h4>Adapters <span class="badge grey">L0</span></h4>
+      <p>
+        Transport only. Parse the frame, authenticate, call the service, push events back out.
+        The WebSocket speaks protocol version <code>2.0</code> and accepts eleven command types.
+      </p>
+      <span class="path">api/routers/unified_ws.py (396)</span>
+    </div>
+
+    <div class="card">
+      <h4>TurnApplicationService <span class="badge">L1</span></h4>
+      <p>
+        The only writer. Admits a submission, reserves an idempotency key, takes the execution lease,
+        persists the row, then spawns the turn. It also serves replay and cancel.
+      </p>
+      <span class="path">app/service.py (683)</span>
+    </div>
+
+    <div class="card">
+      <h4>TurnRuntimeManager <span class="badge">L2</span></h4>
+      <p>
+        Six mixins glued into one class: request preparation, context assembly, learning adapter,
+        execution, lifecycle, and session titles.
+      </p>
+      <span class="path">services/session/turn_runtime.py (55)</span>
+    </div>
+
+    <div class="card">
+      <h4>TurnEngine <span class="badge grey">L3</span></h4>
+      <p>
+        A deliberate seam, not a layer. It opens a memory scope and constructs the orchestrator on
+        every call, so imports stay lazy and tests have one patch point.
+      </p>
+      <span class="path">runtime/turn_engine.py (40)</span>
+    </div>
+
+    <div class="card">
+      <h4>ChatOrchestrator <span class="badge">L4</span></h4>
+      <p>
+        Resolves the capability, opens the bus, runs the capability in its own task, forwards every
+        event, always emits a terminal <code>done</code>, publishes completion to the event bus.
+      </p>
+      <span class="path">runtime/orchestrator.py (277)</span>
+    </div>
+
+    <div class="card">
+      <h4>Capabilities <span class="badge">L5</span></h4>
+      <p>
+        One method: <code>run(context, stream)</code>. Each declares a manifest with name, stages,
+        tools used, CLI aliases, and a request schema.
+      </p>
+      <span class="path">core/capability_protocol.py (102)</span>
+    </div>
+
+    <div class="card">
+      <h4>Tools <span class="badge">L6</span></h4>
+      <p>
+        Eight user toggles. Twenty-nine context-gated built-ins. A capability's declared tool is
+        dropped when its gate is unmet, so a declared tool is never the same as a mounted tool.
+      </p>
+      <span class="path">agents/_shared/tool_composition.py (481)</span>
+    </div>
+
+    <div class="card">
+      <h4>Coordination <span class="badge grey">cross</span></h4>
+      <p>
+        Leases, cancel commands, event journal, and recovery. Two backends: in-memory for one
+        process, Redis for several. The interface stays the same.
+      </p>
+      <span class="path">runtime/coordination/</span>
+    </div>
+  </div>
+
+  <h3>What actually crosses each boundary</h3>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Boundary</th><th>Crosses it</th><th>Does not cross it</th></tr></thead>
+      <tbody>
+        <tr><td>Adapter → service</td><td>A <code>TurnRequest</code> payload</td><td>No StreamBus, no context</td></tr>
+        <tr><td>Service → runtime</td><td>A resolved dict plus workspace scope</td><td>No transport frames</td></tr>
+        <tr><td>Runtime → engine</td><td>One <code>UnifiedContext</code></td><td>No session store handle</td></tr>
+        <tr><td>Orchestrator → capability</td><td>Context plus bus protocol</td><td>No registry, no DB</td></tr>
+        <tr><td>Capability → tools</td><td>Tool schemas and kwargs</td><td>No capability identity</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============================================ 4 -->
+<section id="lifecycle">
+  <h2><span class="num">04</span> Life of one turn</h2>
+  <p class="sectionnote">
+    Nine steps. Dots in the accent colour are the ones that bite when you get them wrong.
+  </p>
+
+  <ol class="timeline">
+    <li>
+      <span class="t">1 · Frame arrives</span>
+      <span class="d">The socket authenticates, parses the command, and forwards it. No state changes here.</span>
+      <span class="f">unified_ws.py → send_command_ack</span>
+    </li>
+    <li class="hot">
+      <span class="t">2 · Submission reserved</span>
+      <span class="d">A SHA-256 digest of the payload, minus session and workspace, becomes the idempotency key.
+      Send the same key twice and you get the same turn back.</span>
+      <span class="f">app/service.py · _submission_digest</span>
+    </li>
+    <li class="hot">
+      <span class="t">3 · Lease taken</span>
+      <span class="d">One worker owns the turn. A second worker asking for the same session gets a conflict,
+      not a second run.</span>
+      <span class="f">coordination · get_lease / submit_command</span>
+    </li>
+    <li>
+      <span class="t">4 · Turn row written</span>
+      <span class="d">Queued, then running. This row is what a reconnecting client reads.</span>
+      <span class="f">services/session/sqlite_store.py (4,921)</span>
+    </li>
+    <li>
+      <span class="t">5 · Context assembled</span>
+      <span class="d">History, knowledge base seeds, memory, personas, attachments, source index, workspace scope.
+      Six services cooperate. The result is one dataclass.</span>
+      <span class="f">turns/executor.py · _run_turn</span>
+    </li>
+    <li class="hot">
+      <span class="t">6 · Capability runs in its own task</span>
+      <span class="d">The orchestrator creates a task and subscribes to the bus. If the reader walks away,
+      the turn keeps running until the finally block cancels it.</span>
+      <span class="f">runtime/orchestrator.py · asyncio.create_task</span>
+    </li>
+    <li>
+      <span class="t">7 · Events stream out</span>
+      <span class="d">Each event gets a sequence number, persists, and fans out to every subscriber on that turn.</span>
+      <span class="f">runtime/stream_bus.py · emit</span>
+    </li>
+    <li class="hot">
+      <span class="t">8 · Done, but not over</span>
+      <span class="d">A terminal <code>done</code> carries status and a usage summary. The session-title model
+      still writes after it. That is why the stream stays open.</span>
+      <span class="f">orchestrator · finally → DONE</span>
+    </li>
+    <li>
+      <span class="t">9 · Lease released, stream closes</span>
+      <span class="d">Releasing the lease is the honest end-of-stream signal. Subscribers exit because
+      ownership disappeared, not because a timer expired.</span>
+      <span class="f">app/service.py · subscribe_turn</span>
+    </li>
+  </ol>
+
+  <details>
+    <summary>Why the turn runs in a separate task</summary>
+    <p>
+      A consumer can stop reading: a cancelled turn, a closed socket, a client that navigated away.
+      If the capability ran inline, that would cancel the work and the row would sit in a live state
+      forever.
+    </p>
+    <p>
+      Running it in a task lets the turn finish its own cleanup. The orchestrator's <code>finally</code>
+      cancels the task only when the consumer stopped early, so the lease always gets released.
+    </p>
+  </details>
+
+  <details>
+    <summary>Why the same submission cannot start two turns</summary>
+    <p>
+      The digest excludes <code>session_id</code> and <code>workspace_id</code>. Everything else in the
+      payload counts, including the tools, the knowledge bases, and the model choice.
+    </p>
+    <p>
+      On admission the store binds the submission to the turn it produced. A retry with the same key
+      returns that turn. A retry with a different payload under the same key is refused.
+    </p>
+  </details>
+</section>
+
+<!-- ============================================ 5 -->
+<section id="events">
+  <h2><span class="num">05</span> Events and replay</h2>
+  <p class="sectionnote">
+    This is the part that makes the system feel instant to a user and resilient to a restart.
+  </p>
+
+  <p>
+    One dataclass carries every message. Fifteen types cover thinking, tool calls, tool results,
+    progress, sources, content, errors, and the terminal states.
+  </p>
+
+  <div class="filecap"><span>core/stream.py</span><em>72 lines</em></div>
+<pre><code>@dataclass
+class StreamEvent:
+    type: StreamEventType      # content, tool_call, done, …
+    source: str = ""           # which capability emitted it
+    stage: str = ""            # pipeline stage inside that capability
+    content: str = ""          # human-readable text
+    metadata: dict = {}        # structured payload
+    session_id: str = ""
+    turn_id: str = ""
+    seq: int = 0               # monotonic per turn
+    timestamp: float = …</code></pre>
+
+  <h3>The bus is a fan-out, not a queue</h3>
+  <p>
+    A <code>StreamBus</code> is created per turn. Producers call <code>emit</code>. Every subscriber
+    gets its own queue, so a slow reader never blocks the capability. The bus keeps history, which is
+    what makes late subscription work.
+  </p>
+  <p>
+    Buses also register by <code>turn_id</code>. That is how a second client attaches to a turn that is
+    already running in a different task, without asking the capability to replay anything.
+  </p>
+
+  <div class="grid two" style="margin-top:18px">
+    <div class="card">
+      <h4>Durable replay</h4>
+      <p>Events are committed to the store with their sequence number. A process restart loses nothing.</p>
+    </div>
+    <div class="card">
+      <h4>Live tail</h4>
+      <p>The coordinator reads events past the last seen sequence, then waits for a notification.</p>
+    </div>
+  </div>
+
+  <details>
+    <summary>The replay loop, in words</summary>
+    <p>
+      <strong>One.</strong> Read every stored event after <code>after_seq</code>. Track the highest
+      sequence seen.
+    </p>
+    <p>
+      <strong>Two.</strong> Read live events from the coordinator past that sequence. If there are none
+      and the lease is gone, re-read the store, because the in-memory stream may have been reclaimed
+      while the subscriber was paused.
+    </p>
+    <p>
+      <strong>Three.</strong> After a <code>done</code>, keep reading. The tail is possible while the
+      lease exists. A thirty-second cap exists only for a leaked lease.
+    </p>
+    <p>
+      <strong>Four.</strong> If the turn row says completed while the lease is still held, sleep briefly
+      and re-check. Completion can commit before the owner publishes <code>done</code>.
+    </p>
+  </details>
+
+  <details>
+    <summary>What a failed turn looks like on the wire</summary>
+    <p>
+      Every failure path emits an <code>error</code> event with <code>turn_terminal: true</code>, then a
+      <code>done</code> with the same status. The orchestrator copies <code>error_code</code>,
+      <code>retryable</code>, and <code>partial_response</code> onto the terminal event when the
+      exception carries them.
+    </p>
+    <p>
+      A capability that returns without publishing a result is not a success. The orchestrator reports
+      <code>capability_incomplete</code> and marks the turn retryable.
+    </p>
+  </details>
+</section>
+
+<!-- ============================================ 6 -->
+<section id="loops">
+  <h2><span class="num">06</span> Two loops, one name</h2>
+  <p class="sectionnote">
+    This is the single most common misreading of the codebase.
+  </p>
+
+  <p>
+    There are two different agent loops. They share a vocabulary and nothing else.
+  </p>
+
+  <div class="grid two">
+    <div class="card">
+      <h4>Native tool calling <span class="badge">chat</span></h4>
+      <p>
+        A round with <code>tool_calls</code> is a tool round. A round without them finishes the turn.
+        The model is never asked to emit a label. Chat, mastery, reading, and course study run here.
+      </p>
+      <span class="path">agents/loop/pipeline.py (2,163)</span>
+    </div>
+    <div class="card">
+      <h4>Label protocol <span class="badge grey">research</span></h4>
+      <p>
+        The reply must start with one allowed label in double backticks. The parser reads it, then
+        routes the rest. Used by research, question generation, and PageIndex reasoning.
+      </p>
+      <span class="path">runtime/agentic/labeled_step.py (675)</span>
+    </div>
+  </div>
+
+  <p style="margin-top:18px">
+    Chat used to speak labels. It stopped in commit <code>46093e5e</code>. If you are reading an older
+    write-up and it tells you chat emits <code>THINK</code> and <code>TOOL</code>, that write-up is
+    out of date.
+  </p>
+
+  <p>
+    The one thing that survives from the old protocol is thinking in the content channel. Chat splits
+    <code>&lt;think&gt;</code> blocks off the stream as it arrives, so the user sees answer text and
+    not reasoning.
+  </p>
+
+  <details>
+    <summary>Why chat's capability file is seventeen lines</summary>
+    <p>
+      Because chat <em>is</em> the default loop. <code>AgenticChatPipeline</code> subclasses the base
+      pipeline and overrides nothing. All the behaviour — the exploring protocol, the tool surface, the
+      prompt pack — lives in the base class.
+    </p>
+    <p>
+      Deep modes that keep chat's protocol construct that class directly and pass different budgets.
+      A mode that needs a different protocol subclasses the host instead.
+    </p>
+  </details>
+</section>
+
+<!-- ============================================ 7 -->
+<section id="gotchas">
+  <h2><span class="num">07</span> Traps</h2>
+  <p class="sectionnote">
+    Each one is documented in the source by whoever hit it. They are the fastest way to stop guessing.
+  </p>
+
+  <div class="gotcha">
+    <h4>A done event is not the end of the stream</h4>
+    <p>
+      The session-title model writes after the answer is saved. Subscribers that return on
+      <code>done</code> drop that event. A finished conversation then sits on "New conversation"
+      forever, because the title frame never arrives.
+    </p>
+    <span class="ref">app/service.py · _POST_DONE_MAX_SECONDS = 30.0</span>
+  </div>
+
+  <div class="gotcha">
+    <h4>End of stream is a lease check, not a timeout</h4>
+    <p>
+      The turn task releases its lease inside its own <code>finally</code>, after every post-turn event
+      is published. Waiting for an idle timeout must exceed the title model's own twenty-second ceiling,
+      which holds every finished stream open for twenty seconds when no title was written.
+    </p>
+    <span class="ref">app/service.py · subscribe_turn</span>
+  </div>
+
+  <div class="gotcha">
+    <h4>Stopping the reader does not stop the run</h4>
+    <p>
+      The capability runs in its own task. Left alone, it keeps calling the model and tools for a turn
+      already reported as stopped. Left parked on <code>ask_user</code>, it gets collected mid-await
+      and never unregisters its bus.
+    </p>
+    <span class="ref">runtime/orchestrator.py · finally</span>
+  </div>
+
+  <div class="gotcha">
+    <h4>Returning without a result counts as failure</h4>
+    <p>
+      The bus records whether a result was published. If a capability returns without one, the turn is
+      marked <code>capability_incomplete</code> with <code>retryable: true</code>. Silence is not success.
+    </p>
+    <span class="ref">orchestrator.py · bus.result_completion</span>
+  </div>
+
+  <div class="gotcha">
+    <h4>Declared tools are not mounted tools</h4>
+    <p>
+      A capability can name a tool in its manifest and still get nothing. The gate decides. A knowledge
+      base tool without a knowledge base never mounts. Nineteen tools are conditional this way.
+    </p>
+    <span class="ref">agents/_shared/tool_composition.py · _CONDITIONAL_MOUNT_FLAGS</span>
+  </div>
+
+  <div class="gotcha">
+    <h4>Absent fields must not overwrite inherited preferences</h4>
+    <p>
+      Admission resolves defaults and durable choices. Writing the transport envelope back over the
+      session would blank a preference the user set two turns ago and never resent.
+    </p>
+    <span class="ref">app/service.py · update_session_preferences</span>
+  </div>
+
+  <div class="gotcha">
+    <h4>Old sources stay attached on purpose</h4>
+    <p>
+      Source references accumulate into <code>workspace_dependencies</code>. A turn that no longer
+      selects a knowledge base still keeps it listed, so citations from earlier answers keep resolving.
+    </p>
+    <span class="ref">app/service.py · workspace_dependencies</span>
+  </div>
+
+  <div class="gotcha">
+    <h4>Physical paths never enter the model</h4>
+    <p>
+      The workspace carries real filesystem roots. The rule in the dataclass is explicit: those paths
+      must never be copied into model messages, persisted metadata, or public URLs.
+    </p>
+    <span class="ref">core/context.py · WorkspaceRuntimeContext</span>
+  </div>
+
+  <div class="gotcha">
+    <h4>An unknown capability is not an exception</h4>
+    <p>
+      It produces an error event listing the available names, then a terminal done. A caller sees a
+      normal failed turn, not a crash.
+    </p>
+    <span class="ref">orchestrator.py · capability is None</span>
+  </div>
+
+  <div class="gotcha">
+    <h4>The compatibility module lies about its size</h4>
+    <p>
+      <code>turn_runtime.py</code> is fifty-five lines. The behaviour is 1,806 lines away in
+      <code>_turn_runtime_shared.py</code>, forwarded by a module-level <code>__getattr__</code>. Jump to
+      definition and you land on a stub.
+    </p>
+    <span class="ref">services/session/turn_runtime.py</span>
+  </div>
+</section>
+
+<!-- ============================================ 8 -->
+<section id="where">
+  <h2><span class="num">08</span> Where the weight is</h2>
+  <p class="sectionnote">
+    Size is not importance, but it tells you where a change is expensive.
+  </p>
+
+  <div class="bars">
+    <div class="bar"><span class="name">api/routers/knowledge.py</span><span class="track"><span class="fill" style="width:100%"></span></span><span class="val">5,294</span></div>
+    <div class="bar"><span class="name">services/session/sqlite_store.py</span><span class="track"><span class="fill" style="width:93%"></span></span><span class="val">4,921</span></div>
+    <div class="bar"><span class="name">capabilities/mastery/tools.py</span><span class="track"><span class="fill" style="width:81%"></span></span><span class="val">4,262</span></div>
+    <div class="bar"><span class="name">learning/service.py</span><span class="track"><span class="fill" style="width:65%"></span></span><span class="val">3,447</span></div>
+    <div class="bar"><span class="name">agents/research/pipeline.py</span><span class="track"><span class="fill" style="width:62%"></span></span><span class="val">3,281</span></div>
+    <div class="bar"><span class="name">api/routers/settings.py</span><span class="track"><span class="fill" style="width:50%"></span></span><span class="val">2,622</span></div>
+    <div class="bar"><span class="name">knowledge/manager.py</span><span class="track"><span class="fill" style="width:49%"></span></span><span class="val">2,592</span></div>
+    <div class="bar"><span class="name">tools/builtin/__init__.py</span><span class="track"><span class="fill" style="width:48%"></span></span><span class="val">2,520</span></div>
+    <div class="bar"><span class="name">book/engine.py</span><span class="track"><span class="fill" style="width:46%"></span></span><span class="val">2,420</span></div>
+    <div class="bar"><span class="name">agents/loop/pipeline.py</span><span class="track"><span class="fill" style="width:41%"></span></span><span class="val">2,163</span></div>
+    <div class="bar"><span class="name">runtime/launcher.py</span><span class="track"><span class="fill" style="width:35%"></span></span><span class="val">1,854</span></div>
+    <div class="bar"><span class="name">services/session/turns/executor.py</span><span class="track"><span class="fill" style="width:30%"></span></span><span class="val">1,600</span></div>
+  </div>
+
+  <p style="margin-top:22px">
+    Now the other direction. The files that carry the most meaning per line:
+  </p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>File</th><th>Lines</th><th>Why it matters</th></tr></thead>
+      <tbody>
+        <tr><td><code>runtime/turn_engine.py</code></td><td>40</td><td>The only join between runtime and orchestrator</td></tr>
+        <tr><td><code>core/stream.py</code></td><td>72</td><td>The wire contract for everything</td></tr>
+        <tr><td><code>core/capability_protocol.py</code></td><td>102</td><td>The contract every capability obeys</td></tr>
+        <tr><td><code>agents/_shared/capability_result.py</code></td><td>51</td><td>Where cost and usage become part of the answer</td></tr>
+        <tr><td><code>core/context.py</code></td><td>182</td><td>The whole input to a turn, in one dataclass</td></tr>
+        <tr><td><code>runtime/orchestrator.py</code></td><td>277</td><td>Routing plus the bus lifecycle plus completion</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <details>
+    <summary>The capability catalogue</summary>
+    <p>
+      Manifests live in JSON and are read at boot. <code>BUILTIN_CAPABILITY_SPECS</code> sorts them by
+      declared order, so chat is zero and ask_questions is one.
+    </p>
+    <div class="tablewrap" style="margin-top:12px">
+      <table>
+        <thead><tr><th>Capability</th><th>Manifest</th></tr></thead>
+        <tbody>
+          <tr><td><code>chat</code></td><td>core.json</td></tr>
+          <tr><td><code>ask_questions</code></td><td>core.json</td></tr>
+          <tr><td><code>deep_solve</code></td><td>solve.json</td></tr>
+          <tr><td><code>deep_question</code></td><td>questions.json</td></tr>
+          <tr><td><code>deep_research</code></td><td>research.json</td></tr>
+          <tr><td><code>visualize</code></td><td>visualize.json</td></tr>
+          <tr><td><code>math_animator</code></td><td>renderer-manim.json</td></tr>
+          <tr><td><code>mastery_path</code></td><td>mastery.json</td></tr>
+          <tr><td><code>immersive_reading</code></td><td>reading.json</td></tr>
+          <tr><td><code>video_lesson</code></td><td>video-lesson.json</td></tr>
+          <tr><td><code>audio_overview</code></td><td>audio-overview.json</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:12px">
+      Plugins add more at boot through the <code>deeptutor.extensions</code> entry point group. A plugin
+      capability is invisible to the loader until that hook is installed.
+    </p>
+  </details>
+</section>
+
+<!-- ============================================ 9 -->
+<section id="read">
+  <h2><span class="num">09</span> Reading order</h2>
+  <p class="sectionnote">
+    Thirty minutes, six files. This order never makes you read a caller before its callee.
+  </p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>#</th><th>File</th><th>Read for</th><th>Time</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td><code>core/stream.py</code></td><td>The event vocabulary. Everything else speaks it.</td><td>2 min</td></tr>
+        <tr><td>2</td><td><code>core/context.py</code></td><td>What a turn carries. Skim the docstring, then the fields.</td><td>5 min</td></tr>
+        <tr><td>3</td><td><code>core/capability_protocol.py</code></td><td>The one method every capability implements.</td><td>3 min</td></tr>
+        <tr><td>4</td><td><code>runtime/orchestrator.py</code></td><td>The whole turn, top to bottom. Read it twice.</td><td>8 min</td></tr>
+        <tr><td>5</td><td><code>app/service.py</code></td><td>Admission, idempotency, and replay. Skip the edit paths on the first pass.</td><td>8 min</td></tr>
+        <tr><td>6</td><td><code>runtime/stream_bus.py</code></td><td>Fan-out, history, input listeners.</td><td>4 min</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>
+    Then, only if you are changing behaviour rather than reading it:
+  </p>
+  <ul>
+    <li><code>services/session/turns/executor.py</code> — the 1,600-line turn body. Start at <code>_run_turn</code>.</li>
+    <li><code>agents/loop/pipeline.py</code> — the chat loop's real behaviour.</li>
+    <li><code>agents/_shared/tool_composition.py</code> — why a tool you declared is not mounted.</li>
+  </ul>
+</section>
+
+<!-- ============================================ 10 -->
+<section id="prompts">
+  <h2><span class="num">10</span> Prompts that work on this repo</h2>
+  <p class="sectionnote">
+    Paste these into Claude Code at the repo root. Each one ends with an export, so the loop closes.
+  </p>
+
+  <div class="prompt">
+    <div class="filecap"><span>1 · explain one subsystem</span><em>single page</em></div>
+    <pre><code>Read deeptutor/runtime/orchestrator.py, deeptutor/app/service.py and
+deeptutor/runtime/stream_bus.py.
+
+Produce one self-contained HTML page explaining what happens between a
+WebSocket frame arriving and a token reaching the browser. Include:
+
+- a sequence diagram of the seven layers, with the real function names
+- the three events that can end a stream, and why there are three
+- a gotchas section, one item per trap, each citing file and symbol
+
+Optimise it for someone who will read it once and then edit the code.</code></pre>
+    <button class="copy" data-copy>Copy</button>
+  </div>
+
+  <div class="prompt">
+    <div class="filecap"><span>2 · map a change</span><em>impact page</em></div>
+    <pre><code>I want to add a new capability. Read the capability registry, one builtin
+capability, and the module manifest format.
+
+Make an HTML page with:
+- the exact checklist of files I must touch, in order
+- a worked example diff for a trivial capability
+- what breaks if I skip the manifest and register the class by hand
+
+Show real code excerpts, not summaries.</code></pre>
+    <button class="copy" data-copy>Copy</button>
+  </div>
+
+  <div class="prompt">
+    <div class="filecap"><span>3 · review a diff</span><em>PR explainer</em></div>
+    <pre><code>Review my current diff and produce one HTML page.
+
+Render the diff with margin annotations tied to specific lines.
+Tag each finding blocking, nit, or nice-to-have.
+Add a "what this changes for a caller" section and a "what I did not test"
+section at the bottom.</code></pre>
+    <button class="copy" data-copy>Copy</button>
+  </div>
+
+  <details>
+    <summary>Why these prompts are shaped this way</summary>
+    <p>
+      Each one names the files. Claude reads the real code instead of guessing from names. Each one
+      names the reader. "Someone reading it once" is a different page from "someone maintaining it".
+    </p>
+    <p>
+      Each one asks for an export or a checklist. A page you cannot act on is a page you skim.
+    </p>
+  </details>
+</section>
+
+<footer>
+  <p>
+    Built by reading this checkout: 1,181 Python files, 337,522 lines, 547 TS/TSX files.
+    Companion to <code>docs-for-dev/ARCHITECTURE.md</code> and <code>docs-for-dev/RUNTIME_DESIGN.md</code>.
+  </p>
+  <p>
+    Open this file directly in a browser. No build step, no server, no external assets.
+  </p>
+</footer>
+
+</main>
+</div>
+
+<script>
+(function () {
+  // ---- copy buttons ----
+  document.querySelectorAll('[data-copy]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var pre = btn.closest('.prompt').querySelector('pre');
+      var text = pre ? pre.innerText : '';
+      var done = function () {
+        btn.textContent = 'Copied';
+        btn.classList.add('done');
+        setTimeout(function () { btn.textContent = 'Copy'; btn.classList.remove('done'); }, 1600);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, function () {});
+      } else {
+        var ta = document.createElement('textarea');
+        ta.value = text; document.body.appendChild(ta); ta.select();
+        try { document.execCommand('copy'); done(); } catch (e) {}
+        document.body.removeChild(ta);
+      }
+    });
+  });
+
+  // ---- nav highlight ----
+  var links = Array.prototype.slice.call(document.querySelectorAll('nav a[href^="#"]'));
+  var targets = links.map(function (a) { return document.querySelector(a.getAttribute('href')); }).filter(Boolean);
+  if ('IntersectionObserver' in window && targets.length) {
+    var byId = {};
+    links.forEach(function (a) { byId[a.getAttribute('href').slice(1)] = a; });
+    var visible = new Set();
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) { visible.add(e.target.id); } else { visible.delete(e.target.id); }
+      });
+      var current = null;
+      for (var i = 0; i < targets.length; i++) {
+        if (visible.has(targets[i].id)) { current = targets[i].id; break; }
+      }
+      if (current) {
+        links.forEach(function (a) { a.classList.remove('active'); });
+        var a = byId[current];
+        if (a) { a.classList.add('active'); }
+      }
+    }, { rootMargin: '-10% 0px -70% 0px', threshold: 0 });
+    targets.forEach(function (t) { io.observe(t); });
+  }
+})();
+</script>
+</body>
+</html>
