@@ -38,7 +38,6 @@ import { useChatAutoScroll } from "@/hooks/useChatAutoScroll";
 import { useMasteryOpening } from "@/hooks/useMasteryOpening";
 import { useMasteryStudySession } from "@/hooks/useMasteryStudySession";
 import { useMeasuredHeight } from "@/hooks/useMeasuredHeight";
-import { useResearchOutlineContinuation } from "@/hooks/useResearchOutlineContinuation";
 import {
   fetchMasteryAskHint,
   setMasterySessionMode as setMasterySessionMode_api,
@@ -48,7 +47,6 @@ import { notify } from "@/lib/notifications";
 import { copyText } from "@/lib/clipboard";
 import { consumePendingPrompt } from "@/lib/pending-prompt";
 import { buildChatOutline, scrollToChatTurn } from "@/lib/chat-outline";
-import { buildConversationNotebookSave } from "@/lib/conversation-notebook-save";
 import {
   masterySessionRoute,
   type MasteryMode,
@@ -123,11 +121,6 @@ const ChatMessageList = dynamic(
   () => import("@/features/chat/messages").then(module => module.ChatMessageList),
 );
 
-const SaveToNotebookModal = dynamic(
-  () => import("@/components/notebook/SaveToNotebookModal"),
-  { ssr: false },
-);
-
 /** Ways in, per mode. What "start" means is not the same in all three. */
 const STARTERS: Record<
   MasteryMode,
@@ -200,7 +193,6 @@ export function MasteryStudy({
     releaseMessageTrace,
     setMasterySessionMode,
   } = useChatStateAdapter();
-  const confirmResearchOutline = useResearchOutlineContinuation();
   const {
     topic,
     topicError,
@@ -228,7 +220,6 @@ export function MasteryStudy({
     [],
   );
   const [viewerOpen, setViewerOpen] = useState(false);
-  const [showSaveModal, setShowSaveModal] = useState(false);
   const sessionActivity = buildSessionActivity(state.messages);
   /* ── Transcript scrolling ────────────────────────────────────────────
      Was a bare `scrollIntoView` keyed on message count — no notion of the
@@ -288,27 +279,6 @@ export function MasteryStudy({
     scrollToBottom("instant");
   }, [scrollToBottom, shouldAutoScrollRef]);
 
-  const notebookFallbackTitle = topic
-    ? topicDisplayName(topic, t)
-    : t("Mastery Path");
-  const { modalMessages: notebookSaveMessages, payload: notebookSavePayload } =
-    useMemo(
-      () =>
-        buildConversationNotebookSave(state.messages, {
-          source: "mastery_path",
-          fallbackTitle: notebookFallbackTitle,
-          activeCapability: state.activeCapability,
-          language: state.language,
-          sessionId: state.sessionId,
-        }),
-      [
-        notebookFallbackTitle,
-        state.activeCapability,
-        state.language,
-        state.messages,
-        state.sessionId,
-      ],
-    );
   // A new turn is the clearest possible "show me the answer" — re-arm the
   // pin even if a previous turn's browsing had released it.
   useEffect(() => {
@@ -652,17 +622,6 @@ export function MasteryStudy({
         />
 
         <div className="flex shrink-0 items-center gap-1.5 pl-2">
-          <Tooltip label={t("Save to Notebook")}>
-            <button
-              type="button"
-              onClick={() => setShowSaveModal(true)}
-              disabled={!notebookSavePayload}
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
-              aria-label={t("Save to Notebook")}
-            >
-              <BookmarkPlus className="h-4 w-4" />
-            </button>
-          </Tooltip>
           <button
             type="button"
             onClick={() => setViewerOpen((open) => !open)}
@@ -856,7 +815,6 @@ export function MasteryStudy({
                         return true;
                       }}
                       onPreviewAttachment={handlePreviewMessageAttachment}
-                      onConfirmOutline={confirmResearchOutline}
                       onLoadMessageTrace={(messageId) =>
                         state.sessionId
                           ? loadMessageTrace(state.sessionId, messageId)
@@ -909,12 +867,6 @@ export function MasteryStudy({
           onDone={() => setCelebration(null)}
         />
       )}
-      {showSaveModal && <SaveToNotebookModal
-        open={showSaveModal}
-        payload={notebookSavePayload}
-        messages={notebookSaveMessages}
-        onClose={() => setShowSaveModal(false)}
-      />}
       <SessionViewerPanel
         ref={viewerPanelRef}
         open={viewerOpen}

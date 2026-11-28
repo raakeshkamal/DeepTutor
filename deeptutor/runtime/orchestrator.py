@@ -65,8 +65,8 @@ class ChatOrchestrator:
         """
         Execute a single user turn and yield streaming events.
 
-        If ``context.active_capability`` is set, the corresponding capability
-        handles the turn. Otherwise, the default ``chat`` capability is used.
+        Mastery-only: ``mastery_path`` is the only registered capability and
+        always handles the turn, whatever ``context.active_capability`` says.
         """
         if not context.session_id:
             context.session_id = str(uuid.uuid4())
@@ -100,18 +100,10 @@ class ChatOrchestrator:
                 yield event
             return
 
-        capability: TurnCapability | None
-        if context.runtime.answer_by:
-            # The turn belongs to someone else: a partner or a connected agent
-            # answers in place of the selected mode. Not a registry entry —
-            # it is never a mode a learner picks, only who replies.
-            from deeptutor.capabilities.handoff import HandoffCapability
-
-            cap_name = "handoff"
-            capability = HandoffCapability()
-        else:
-            cap_name = context.active_capability or "chat"
-            capability = self._cap_registry.get(cap_name)
+        # Partners and connected agents are gone on this branch, so there is
+        # no hand-off turn and no ``chat`` fallback capability to select.
+        cap_name = "mastery_path"
+        capability = self._cap_registry.get(cap_name)
 
         if capability is None:
             bus = StreamBus()

@@ -4,6 +4,7 @@ from http.server import ThreadingHTTPServer
 import json
 import os
 from pathlib import Path
+import re
 import socket
 import subprocess
 import sys
@@ -17,8 +18,53 @@ import urllib.request
 from test_policy import Handler
 import yaml
 
+# Cold start of LiteLLM 1.101.0 on loopback was measured at ~11.1s. The old
+# 100 x 0.1s polling budget (10s) expired before /v1/models answered. Use a
+# real monotonic deadline with generous headroom; it stays bounded.
+READY_DEADLINE_SECONDS = 45.0
+POLL_INTERVAL_SECONDS = 0.1
+
+# Credentials must never reach a failure message. The tests only use dummy
+# keys, but a proxy log can echo configured upstream keys or Authorization
+# headers, so every line is redacted before it is attached to an error.
+_REDACTORS = (
+    re.compile(r"(?i)(authorization[\"']?\s*[:=]\s*[\"']?)(bearer\s+)?[^\s,\"'}]+"),
+    re.compile(r"(?i)(api[_-]?key[\"']?\s*[:=]\s*[\"']?)[^\s,\"'}]+"),
+    re.compile(r"(?i)(token[\"']?\s*[:=]\s*[\"']?)[^\s,\"'}]+"),
+    re.compile(r"(?i)(bearer\s+)[A-Za-z0-9._\-]{6,}"),
+    re.compile(r"\bsk-(?:or-)?[A-Za-z0-9._\-]{8,}\b"),
+)
+
+
+def redact_proxy_log(text: str) -> str:
+    """Remove credential-shaped values without changing log structure."""
+    for pattern in _REDACTORS:
+        if pattern.groups >= 2:
+            text = pattern.sub(
+                lambda m: (m.group(1) or "") + (m.group(2) or "") + "<redacted>", text
+            )
+        else:
+            text = pattern.sub("<redacted>", text)
+    return text
+
+
+class RedactionTests(unittest.TestCase):
+    def test_credentials_are_removed_from_failure_logs(self) -> None:
+        sample = (
+            'Authorization: Bearer upstream-test-only\n'
+            'api_key: "sk-or-abcdef123456"\n'
+            'OPENROUTER_API_KEY=upstream-test-only\n'
+            'INFO: ready on 127.0.0.1:4000\n'
+        )
+        redacted = redact_proxy_log(sample)
+        for secret in ("upstream-test-only", "sk-or-abcdef123456"):
+            self.assertNotIn(secret, redacted)
+        self.assertIn("ready on 127.0.0.1:4000", redacted)
+
 
 class HttpProxyTests(unittest.TestCase):
+    _torn_down = False
+
     @classmethod
     def setUpClass(cls):
         cls.temp = tempfile.TemporaryDirectory(prefix="dt-proxy-test-")
@@ -35,10 +81,13 @@ class HttpProxyTests(unittest.TestCase):
             threading.Thread(target=server.serve_forever, daemon=True).start()
             cls.servers.append(server)
         directory = Path(__file__).resolve().parents[1]
-        config = yaml.safe_load((directory / "config.yaml").read_text())
-        config = deepcopy(config)
+        config = deepcopy(yaml.safe_load((directory / "config.yaml").read_text()))
         for model, server in zip(config["model_list"], cls.servers):
-            model["litellm_params"].update(api_base=f"http://127.0.0.1:{server.server_port}/v1", api_key="upstream-test-only", timeout=5)
+            model["litellm_params"].update(
+                api_base=f"http://127.0.0.1:{server.server_port}/v1",
+                api_key="upstream-test-only",
+                timeout=5,
+            )
         cls.config = cls.home / "proxy.yaml"
         cls.config.write_text(yaml.safe_dump(config))
         with socket.socket() as port:
@@ -49,21 +98,49 @@ class HttpProxyTests(unittest.TestCase):
             [sys.executable, str(directory / "serve.py")], stdout=cls.log, stderr=cls.log,
             env={**os.environ, "DEEPTUTOR_HOME": str(cls.home), "DEEPTUTOR_LITELLM_CONFIG": str(cls.config), "DEEPTUTOR_LITELLM_PORT": str(cls.port), "OPENROUTER_API_KEY": "upstream-test-only", "OPENCODE_GO_API_KEY": "upstream-test-only"},
         )
-        for _ in range(100):
+
+        started = time.monotonic()
+        deadline = started + READY_DEADLINE_SECONDS
+        while time.monotonic() < deadline:
             if cls.process.poll() is not None:
-                cls.tearDownClass()
-                raise RuntimeError("The offline proxy failed during startup.")
+                cls._fail_with_proxy_log(
+                    f"The offline proxy exited during startup (code {cls.process.returncode})."
+                )
             try:
-                r = urllib.request.Request(f"http://127.0.0.1:{cls.port}/v1/models", headers={"Authorization": "Bearer " + cls.key})
+                r = urllib.request.Request(
+                    f"http://127.0.0.1:{cls.port}/v1/models",
+                    headers={"Authorization": "Bearer " + cls.key},
+                )
                 with urllib.request.urlopen(r, timeout=1):
+                    cls.ready_seconds = round(time.monotonic() - started, 1)
+                    print(f"offline proxy ready after {cls.ready_seconds}s", flush=True)
                     return
             except (OSError, urllib.error.URLError):
-                time.sleep(0.1)
+                time.sleep(POLL_INTERVAL_SECONDS)
+        cls._fail_with_proxy_log(
+            f"The offline proxy never became ready within "
+            f"{READY_DEADLINE_SECONDS:.0f}s."
+        )
+
+    @classmethod
+    def _fail_with_proxy_log(cls, message: str) -> None:
+        """Attach a bounded, redacted proxy-log tail to a startup failure."""
+        try:
+            cls.log.flush()
+            raw = (cls.home / "proxy.log").read_text(errors="replace")
+        except OSError:
+            raw = "(proxy log unavailable)"
+        tail = "\n".join(redact_proxy_log(raw).splitlines()[-40:]) or "(empty log)"
         cls.tearDownClass()
-        raise RuntimeError("The offline proxy never became ready.")
+        raise RuntimeError(
+            f"{message}\n--- proxy log (redacted, last 40 lines) ---\n{tail}"
+        )
 
     @classmethod
     def tearDownClass(cls):
+        if getattr(cls, "_torn_down", False):
+            return
+        cls._torn_down = True
         cls.process.terminate()
         try:
             cls.process.wait(timeout=10)

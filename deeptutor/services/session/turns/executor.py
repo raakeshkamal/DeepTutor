@@ -45,7 +45,6 @@ from .._turn_runtime_shared import (
     _reading_viewport,
     _reading_viewport_image_attachments,
     _reading_workspace_id,
-    _repair_chinese_emphasis_for_persistence,
     _request_snapshot_metadata,
     _resolve_side_chat_context,
     _resolve_turn_failure_metadata,
@@ -1207,13 +1206,9 @@ class TurnExecutor:
             # already unwinding and must not start new blocking work.
             await fill_preview_text(generated_attachments)
 
-            # Persist every published content segment. Apply the CJK Markdown
-            # repair only after every streamed segment has
-            # arrived, so no incomplete response is ever rewritten.
-            assistant_content = _repair_chinese_emphasis_for_persistence(
-                _persisted_answer(),
-                str(payload.get("language", "en") or "en"),
-            )
+            # Persist every published content segment. English only: no CJK
+            # Markdown emphasis repair runs on this branch.
+            assistant_content = _persisted_answer()
 
             # Assistant continues the same branch as the user message it
             # answers. If we just persisted a new user row we chain off

@@ -28,8 +28,5 @@
     "pywin32; sys_platform == 'win32'"
   ],
   "executables": [],
-  "http_paths": [
-    "/api/settings/document-parsing",
-    "/api/settings/mineru"
-  ]
+  "http_paths": []
 }

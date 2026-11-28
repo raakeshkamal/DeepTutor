@@ -535,7 +535,7 @@ class TestContextBuilderSummarize:
         ("language", "expected"),
         [
             ("ja", "Write the summary itself in 日本語."),
-            ("zh", "摘要正文本身请使用中文（简体）撰写。"),
+            ("zh", "Write the summary itself in 中文（简体）."),
         ],
     )
     async def test_summary_instruction_names_the_session_language(

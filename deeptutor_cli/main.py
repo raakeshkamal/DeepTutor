@@ -143,7 +143,8 @@ def start(
     from deeptutor.modules.catalog import require_module
 
     require_module("server")
-    require_module("web")
+    # Mastery-only: the frontend is part of the source checkout, not a
+    # separately installable module wheel any more.
     from deeptutor.runtime.launcher import start as start_web
 
     start_web(home=home, dev=dev, detach=detach, open_browser=open_browser)

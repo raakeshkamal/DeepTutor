@@ -20,30 +20,15 @@ class PromptManager:
     _cache: dict[str, dict[str, Any]] = {}
 
     # Language fallback chain: if primary language not found, try alternatives
-    LANGUAGE_FALLBACKS = {
-        "zh": ["zh", "cn", "en"],
-        "en": ["en", "zh", "cn"],
-    }
+    # One language remains: English. There is no Chinese fallback.
+    LANGUAGE_FALLBACKS = {"en": ["en"]}
 
     # Supported modules
-    MODULES = [
-        "research",
-        "solve",
-        "question",
-        "co_writer",
-        "math_animator",
-        "video_lesson",
-        "book",
-        "notebook",
-        "visualize",
-        "chat",
-    ]
+    MODULES = ["mastery"]
 
     # Modules that are not under deeptutor/agents/ directory
     # Map module_name → on-disk path component under deeptutor/
     NON_AGENT_MODULES: dict[str, str] = {
-        "book": "book",
-        "co_writer": "co_writer",
         "capabilities": "capabilities",
         # A capability that owns a whole loop keeps its prompt pack beside its
         # code rather than under agents/, so the pack and the tools it
@@ -60,7 +45,7 @@ class PromptManager:
         self,
         module_name: str,
         agent_name: str,
-        language: str = "zh",
+        language: str = "en",
         subdirectory: str | None = None,
     ) -> dict[str, Any]:
         """
@@ -133,10 +118,8 @@ class PromptManager:
         Chinese (#712) — the language directive, not the prompt file, is what
         makes the model answer in the requested language.
         """
-        base_chain = self.LANGUAGE_FALLBACKS.get(lang_code) or self.LANGUAGE_FALLBACKS.get(
-            lang_code.split("-", 1)[0], []
-        )
-        return list(dict.fromkeys([lang_code, *base_chain, "en"]))
+        # Only English prompt packs ship on this branch.
+        return ["en"]
 
     def _candidate_prompt_dirs(self, module_name: str) -> list[Path]:
         """Return legacy and current prompt roots for a module."""
@@ -234,7 +217,7 @@ class PromptManager:
         self,
         module_name: str,
         agent_name: str,
-        language: str = "zh",
+        language: str = "en",
         subdirectory: str | None = None,
     ) -> dict[str, Any]:
         """Force reload prompts, bypassing cache."""

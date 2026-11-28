@@ -12,7 +12,7 @@ import type { ReactNode } from "react";
 import { Bot, MessagesSquare, UsersRound } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { agentGlyph } from "@/components/agents/agent-icons";
-import PartnerAvatar from "@/components/partners/PartnerAvatar";
+import NeutralAvatar from "@/components/chat/NeutralAvatar";
 import { usePartnerGroups } from "@/hooks/usePartnerGroups";
 import { usePartnerRoster } from "@/hooks/usePartnerRoster";
 import { DITO, type SideChatResponder } from "@/lib/side-chat";
@@ -93,7 +93,7 @@ export default function ResponderList({
             <MenuRow
               key={partner.partner_id}
               icon={
-                <PartnerAvatar
+                <NeutralAvatar
                   name={partner.name}
                   emoji={partner.emoji}
                   color={partner.color}

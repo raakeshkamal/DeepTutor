@@ -14,7 +14,9 @@ import warnings
 from deeptutor.capabilities.protocol import LoopExtension
 from deeptutor.core.context import UnifiedContext
 from deeptutor.modules.catalog import contribution_enabled, manifests
-from deeptutor.plugins.entry_points import load_entry_point_group
+def load_entry_point_group(group, coerce, log=None):
+    """Mastery-only: the plugin layer is gone, so no external extensions load."""
+    return []
 from deeptutor.runtime.capability_catalog import EmptyConfig, get_capability_catalog
 
 logger = logging.getLogger(__name__)

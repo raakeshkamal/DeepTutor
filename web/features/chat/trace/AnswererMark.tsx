@@ -2,7 +2,7 @@
 
 import { Bot } from "lucide-react";
 import { agentGlyph } from "@/components/agents/agent-icons";
-import PartnerAvatar from "@/components/partners/PartnerAvatar";
+import NeutralAvatar from "@/components/chat/NeutralAvatar";
 import { usePartner } from "@/hooks/usePartnerRoster";
 import type { Answerer } from "./answerer";
 
@@ -35,7 +35,7 @@ export function AnswererMark({
       style={{ width: size, height: size }}
     >
       {answerer.kind === "partner" ? (
-        <PartnerAvatar
+        <NeutralAvatar
           name={partner?.name ?? answerer.name}
           emoji={partner?.emoji ?? answerer.emoji}
           color={partner?.color ?? answerer.color}

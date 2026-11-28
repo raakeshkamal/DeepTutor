@@ -2397,21 +2397,10 @@ COMING_SOON_TOOL_NAMES: tuple[str, ...] = tuple(
     tool_type().name for tool_type in COMING_SOON_TOOL_TYPES
 )
 
-# Tools the user can switch on/off from /settings/tools ("体验增强" /
-# Experience Enhancement). Everything else in BUILTIN_TOOL_NAMES is mounted
-# automatically by the chat pipeline under per-tool context gates and is
-# locked-on from the user's perspective. Ordering here is the canonical
-# display order for the settings page.
-USER_TOGGLEABLE_TOOL_NAMES: tuple[str, ...] = (
-    "brainstorm",
-    "web_search",
-    "paper_search",
-    "zotero_search",
-    "reason",
-    "geogebra_analysis",
-    "imagegen",
-    "videogen",
-)
+# Mastery-only cleanup: the settings screen is gone and no user-toggleable
+# tool remains. Every turn mounts the fixed surface declared in
+# ``deeptutor.agents._shared.tool_composition.MASTERY_TOOL_NAMES``.
+USER_TOGGLEABLE_TOOL_NAMES: tuple[str, ...] = ()
 
 # Built-in tools the chat agent loop auto-mounts under context gates (a KB
 # attached, the sandbox enabled, the user having memory/notebooks, …) rather

@@ -23,116 +23,6 @@
       "order": 542
     },
     {
-      "reference": "deeptutor.api.routers.outputs:router",
-      "options": {
-        "prefix": "/files/outputs",
-        "tags": [
-          "outputs"
-        ]
-      },
-      "auth": "public",
-      "order": 543
-    },
-    {
-      "reference": "deeptutor.api.routers.workspace:files_router",
-      "options": {
-        "prefix": "/files/workspace-items",
-        "tags": [
-          "workspace"
-        ]
-      },
-      "auth": "public",
-      "order": 546
-    },
-    {
-      "reference": "deeptutor.api.routers.multi_user:router",
-      "options": {
-        "prefix": "/api/multi-user",
-        "tags": [
-          "multi-user"
-        ]
-      },
-      "auth": "learning",
-      "order": 566
-    },
-    {
-      "reference": "deeptutor.api.routers.file_preview:router",
-      "options": {
-        "prefix": "/api/file-preview",
-        "tags": [
-          "file-preview"
-        ]
-      },
-      "auth": "authenticated",
-      "order": 584
-    },
-    {
-      "reference": "deeptutor.api.routers.imports:router",
-      "options": {
-        "prefix": "/api/imports",
-        "tags": [
-          "imports"
-        ]
-      },
-      "auth": "learning",
-      "order": 590
-    },
-    {
-      "reference": "deeptutor.api.routers.dashboard:router",
-      "options": {
-        "prefix": "/api/dashboard",
-        "tags": [
-          "dashboard"
-        ]
-      },
-      "auth": "learning",
-      "order": 596
-    },
-    {
-      "reference": "deeptutor.api.routers.file_library:router",
-      "options": {
-        "prefix": "/files/library",
-        "tags": [
-          "library"
-        ]
-      },
-      "auth": "learning",
-      "order": 608
-    },
-    {
-      "reference": "deeptutor.api.routers.task_board:router",
-      "options": {
-        "prefix": "/api/task-board",
-        "tags": [
-          "task-board"
-        ]
-      },
-      "auth": "learning",
-      "order": 634
-    },
-    {
-      "reference": "deeptutor.api.routers.learning_journal:router",
-      "options": {
-        "prefix": "/api/learning-journal",
-        "tags": [
-          "learning-journal"
-        ]
-      },
-      "auth": "learning",
-      "order": 665
-    },
-    {
-      "reference": "deeptutor.api.routers.capabilities_settings:router",
-      "options": {
-        "prefix": "/api/capabilities",
-        "tags": [
-          "capabilities"
-        ]
-      },
-      "auth": "learning",
-      "order": 671
-    },
-    {
       "reference": "deeptutor.api.routers.capabilities:router",
       "options": {
         "prefix": "/api/capabilities",
@@ -177,116 +67,6 @@
       "order": 710
     },
     {
-      "reference": "deeptutor.api.routers.workspace:settings_router",
-      "options": {
-        "prefix": "/api/settings/workspace",
-        "tags": [
-          "workspace-settings"
-        ]
-      },
-      "auth": "learning",
-      "order": 716
-    },
-    {
-      "reference": "deeptutor.api.routers.mcp_settings:router",
-      "options": {
-        "prefix": "/api/settings/mcp",
-        "tags": [
-          "mcp-settings"
-        ]
-      },
-      "auth": "learning",
-      "order": 728
-    },
-    {
-      "reference": "deeptutor.api.routers.space_mcp:router",
-      "options": {
-        "prefix": "/api/space/mcp",
-        "tags": [
-          "space-mcp"
-        ]
-      },
-      "auth": "learning",
-      "order": 738
-    },
-    {
-      "reference": "deeptutor.api.routers.space_cli_apps:router",
-      "options": {
-        "prefix": "/api/space/cli-apps",
-        "tags": [
-          "space-cli-apps"
-        ]
-      },
-      "auth": "learning",
-      "order": 748
-    },
-    {
-      "reference": "deeptutor.api.routers.skills:router",
-      "options": {
-        "prefix": "/api/skills",
-        "tags": [
-          "skills"
-        ]
-      },
-      "auth": "learning",
-      "order": 754
-    },
-    {
-      "reference": "deeptutor.api.routers.subagents:router",
-      "options": {
-        "prefix": "/api/subagents",
-        "tags": [
-          "subagents"
-        ]
-      },
-      "auth": "learning",
-      "order": 757
-    },
-    {
-      "reference": "deeptutor.api.routers.personas:router",
-      "options": {
-        "prefix": "/api",
-        "tags": [
-          "personas"
-        ]
-      },
-      "auth": "learning",
-      "order": 763
-    },
-    {
-      "reference": "deeptutor.api.routers.creations:router",
-      "options": {
-        "prefix": "/api/creations",
-        "tags": [
-          "creations"
-        ]
-      },
-      "auth": "learning",
-      "order": 845
-    },
-    {
-      "reference": "deeptutor.api.routers.plugins:router",
-      "options": {
-        "prefix": "/api/plugins",
-        "tags": [
-          "plugins"
-        ]
-      },
-      "auth": "public",
-      "order": 766
-    },
-    {
-      "reference": "deeptutor.api.routers.tools:router",
-      "options": {
-        "prefix": "/api/tools",
-        "tags": [
-          "tools"
-        ]
-      },
-      "auth": "learning",
-      "order": 769
-    },
-    {
       "reference": "deeptutor.api.routers.system:router",
       "options": {
         "prefix": "/api/system",
@@ -296,28 +76,6 @@
       },
       "auth": "learning",
       "order": 772
-    },
-    {
-      "reference": "deeptutor.api.routers.agent_config:router",
-      "options": {
-        "prefix": "/api/agent-config",
-        "tags": [
-          "agent-config"
-        ]
-      },
-      "auth": "learning",
-      "order": 790
-    },
-    {
-      "reference": "deeptutor.api.routers.attachments:router",
-      "options": {
-        "prefix": "/files/attachments",
-        "tags": [
-          "attachments"
-        ]
-      },
-      "auth": "learning",
-      "order": 821
     },
     {
       "reference": "deeptutor.api.routers.unified_ws:router",
@@ -330,15 +88,10 @@
       "order": 838
     },
     {
-      "reference": "deeptutor.api.routers.quiz_judge:router",
-      "options": {
-        "prefix": "/ws",
-        "tags": [
-          "quiz-judge"
-        ]
-      },
+      "reference": "deeptutor.api.routers.mastery_compat:router",
+      "options": {},
       "auth": "public",
-      "order": 842
+      "order": 900
     }
   ],
   "commands": [],

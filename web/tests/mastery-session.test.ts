@@ -1,4 +1,3 @@
-import { readingSessionIdFromPath } from "../lib/learning-routes";
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -8,7 +7,6 @@ import {
   sessionRoute,
 } from "../lib/mastery-session";
 import type { SessionSummary } from "../lib/session-api";
-import { workspaceActionNeedsConfiguration } from "../lib/workspace-mode";
 
 function session(preferences: SessionSummary["preferences"]): SessionSummary {
   return {
@@ -23,112 +21,55 @@ function session(preferences: SessionSummary["preferences"]): SessionSummary {
   };
 }
 
+// Mastery-only regression: there is exactly one surface route. Reading,
+// books, notes and watching were removed with their features, so their
+// legacy helpers must never claim a conversation again.
 test("mastery ownership survives switching the per-turn action", () => {
   const item = session({
     workspace_mode: "mastery_path",
     mastery_path_id: "path-42",
     capability: "deep_research",
   });
-
   assert.equal(masteryPathIdOf(item), "path-42");
 });
 
-test("reading ownership survives switching the per-turn action", () => {
+test("a mastery conversation routes back to its topic session", () => {
   const item = session({
-    workspace_mode: "immersive_reading",
-    reading_workspace_id: "reading-42",
-    capability: "visualize",
+    workspace_mode: "mastery_path",
+    mastery_path_id: "path-42",
   });
-
-  assert.equal(readingWorkspaceIdOf(item), "reading-42");
+  assert.match(
+    sessionRoute(item),
+    /^\/learning\/mastery\/path-42\/sessions\/session-1/,
+  );
 });
 
-test("capability and retired session-kind fields do not claim workspace ownership", () => {
+test("capability alone never claims workspace ownership", () => {
   assert.equal(
-    masteryPathIdOf(
-      session({ capability: "mastery_path", mastery_path_id: "legacy-path" }),
-    ),
+    masteryPathIdOf(session({ capability: "mastery_path", mastery_path_id: "legacy-path" })),
     "",
   );
   assert.equal(
-    readingWorkspaceIdOf(
-      session({
-        capability: "immersive_reading",
-        session_kind: "immersive_reading",
-        reading_workspace_id: "legacy-reading",
-      }),
-    ),
+    readingWorkspaceIdOf(session({ capability: "immersive_reading", reading_workspace_id: "legacy" })),
     "",
   );
 });
 
-test("unrelated sessions do not inherit stale learning ids", () => {
+test("unrelated sessions fall back to /chat and never inherit stale ids", () => {
   assert.equal(
-    masteryPathIdOf(
-      session({ capability: "chat", mastery_path_id: "stale-path" }),
-    ),
+    masteryPathIdOf(session({ capability: "chat", mastery_path_id: "stale-path" })),
     "",
   );
+  assert.match(
+    sessionRoute(session({ capability: "chat", mastery_path_id: "stale-path" })),
+    /^\/chat\/session-1/,
+  );
   assert.equal(
-    readingWorkspaceIdOf(
-      session({ capability: "chat", reading_workspace_id: "stale-reading" }),
-    ),
+    readingWorkspaceIdOf(session({ workspace_mode: "immersive_reading", reading_workspace_id: "rw_42" })),
     "",
   );
-});
-
-test("configured workspace actions do not bypass their settings", () => {
-  assert.equal(workspaceActionNeedsConfiguration("deep_question"), true);
-  assert.equal(workspaceActionNeedsConfiguration("visualize"), true);
-  assert.equal(workspaceActionNeedsConfiguration("deep_research"), true);
-  assert.equal(workspaceActionNeedsConfiguration("deep_solve"), false);
-  assert.equal(workspaceActionNeedsConfiguration(""), false);
-});
-
-/* ── Reading URLs, both directions ──────────────────────────────────────
-   The workspace writes the first turn's session id into the address bar with
-   the native history API, because moving between `/learning/reading/<ws>` and
-   `/learning/reading/<ws>/sessions/<id>` through the router unmounts the whole reader
-   mid-answer. That only holds together if reading the URL back agrees with
-   writing it: were they to disagree, the first question of a conversation
-   would land on a URL the workspace then reads as "start a new one". */
-
-test("a reading conversation route round-trips through the path parser", () => {
-  const route = sessionRoute(
-    session({
-      workspace_mode: "immersive_reading",
-      reading_workspace_id: "rw_42",
-    }),
+  assert.match(
+    sessionRoute(session({ note_document_id: "0c2d24985c4f" })),
+    /^\/chat\/session-1/,
   );
-
-  assert.equal(route, "/learning/reading/rw_42/sessions/session-1?dt_workspace=");
-  assert.equal(readingSessionIdFromPath(route), "session-1");
-});
-
-test("a bare collection URL means a new conversation, not a stored one", () => {
-  assert.equal(readingSessionIdFromPath("/learning/reading/rw_42"), null);
-  assert.equal(readingSessionIdFromPath("/learning/reading/rw_42/sessions"), null);
-  assert.equal(readingSessionIdFromPath("/learning/reading/rw_42/sessions/"), null);
-  assert.equal(readingSessionIdFromPath("/learning/reading"), null);
-});
-
-test("reading session ids survive URL encoding and trailing path noise", () => {
-  assert.equal(
-    readingSessionIdFromPath("/learning/reading/rw%2042/sessions/unified_1_a%2Fb"),
-    "unified_1_a/b",
-  );
-  assert.equal(
-    readingSessionIdFromPath("/learning/reading/rw_42/sessions/abc?tab=notes"),
-    "abc",
-  );
-});
-
-test("only reading URLs are read as reading conversations", () => {
-  assert.equal(readingSessionIdFromPath("/chat/abc"), null);
-  assert.equal(readingSessionIdFromPath("/learning/mastery/p1/sessions/abc"), null);
-});
-
-test("a note companion conversation opens back on its page with its thread", () => {
-  const item = session({ note_document_id: "0c2d24985c4f" });
-  assert.match(sessionRoute(item), /^\/co-writer\/0c2d24985c4f\?chat=session-1/);
 });

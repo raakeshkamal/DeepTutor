@@ -5,12 +5,7 @@
   "requires": [
     "knowledge"
   ],
-  "optional": [
-    "books",
-    "notebook",
-    "co-writer",
-    "reading"
-  ],
+  "optional": [],
   "paths": [
     "deeptutor/capabilities/mastery",
     "deeptutor/learning",
@@ -27,7 +22,8 @@
         "name": "mastery_path",
         "description": "Mastery-based tutoring: a dedicated agent loop drives an adaptive mastery path with a hard, per-type mastery gate and spaced review.",
         "stages": [
-          "responding"
+          "responding",
+          "grading"
         ],
         "tools_used": [
           "mastery_prepare_lesson",
@@ -39,13 +35,8 @@
           "mastery_repair_question",
           "mastery_defer_objective",
           "mastery_assess",
-          "mastery_build",
           "mastery_mode",
           "mastery_profile",
-          "mastery_revise",
-          "mastery_paths",
-          "mastery_switch",
-          "mastery_leave",
           "rag",
           "read_source",
           "ask_user"
@@ -63,22 +54,6 @@
     }
   },
   "tools": {
-    "mastery_topics": {
-      "class_path": "deeptutor.tools.mastery_nav:MasteryTopicsTool",
-      "order": 40
-    },
-    "mastery_sessions": {
-      "class_path": "deeptutor.tools.mastery_nav:MasterySessionsTool",
-      "order": 41
-    },
-    "mastery_open_session": {
-      "class_path": "deeptutor.tools.mastery_nav:MasteryOpenSessionTool",
-      "order": 42
-    },
-    "mastery_new_session": {
-      "class_path": "deeptutor.tools.mastery_nav:MasteryNewSessionTool",
-      "order": 43
-    },
     "mastery_status": {
       "class_path": "deeptutor.capabilities.mastery.tools:MasteryStatusTool",
       "order": 44
@@ -115,10 +90,6 @@
       "class_path": "deeptutor.capabilities.mastery.tools:MasteryAssessTool",
       "order": 52
     },
-    "mastery_build": {
-      "class_path": "deeptutor.capabilities.mastery.tools:MasteryBuildTool",
-      "order": 53
-    },
     "mastery_mode": {
       "class_path": "deeptutor.capabilities.mastery.tools:MasteryModeTool",
       "order": 54
@@ -126,22 +97,6 @@
     "mastery_profile": {
       "class_path": "deeptutor.capabilities.mastery.tools:MasteryProfileTool",
       "order": 55
-    },
-    "mastery_revise": {
-      "class_path": "deeptutor.capabilities.mastery.tools:MasteryReviseTool",
-      "order": 56
-    },
-    "mastery_paths": {
-      "class_path": "deeptutor.capabilities.mastery.tools:MasteryPathsTool",
-      "order": 57
-    },
-    "mastery_switch": {
-      "class_path": "deeptutor.capabilities.mastery.tools:MasterySwitchTool",
-      "order": 58
-    },
-    "mastery_leave": {
-      "class_path": "deeptutor.capabilities.mastery.tools:MasteryLeaveTool",
-      "order": 59
     }
   },
   "routes": [
@@ -175,5 +130,6 @@
   ],
   "services": [],
   "requirements": [],
-  "executables": []
+  "executables": [],
+  "http_paths": []
 }

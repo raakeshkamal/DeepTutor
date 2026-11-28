@@ -740,16 +740,12 @@ def _timed_media_viewport(value: Any) -> dict[str, float]:
 
 
 def _reading_references(value: Any) -> list[dict[str, Any]]:
-    """Normalize reading units explicitly attached to an ordinary chat turn."""
+    """Mastery-only: reading units were removed with the reader.
 
-    if not value:
-        return []
-    from deeptutor.modules.catalog import require_module
-
-    require_module("reading")
-    from deeptutor.reading.references import normalize_reading_references
-
-    return normalize_reading_references(value)
+    Kept as a named helper because request preparation still calls it for
+    every turn; it never consults a deleted module.
+    """
+    return []
 
 
 # One reading unit's own cap, for all attached units together: up to 24 units

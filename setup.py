@@ -1,12 +1,11 @@
-"""Use the same ownership filter for ordinary pip/source wheel builds."""
+"""Mastery-only source build.
 
-from pathlib import Path
-import sys
+The cleanup removed the per-module wheel split, so there is no ownership
+filter and no generated extra set any more. ``pyproject.toml`` owns all
+metadata; this shim exists only because the source tree still uses a
+``setup.py`` entry point.
+"""
 
 from setuptools import setup
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from build_metadata import optional_dependencies
-from build_support import CoreBuildPy
-
-setup(cmdclass={"build_py": CoreBuildPy}, extras_require=optional_dependencies())
+setup()

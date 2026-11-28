@@ -64,7 +64,7 @@ def test_run_command_json_mode(monkeypatch) -> None:
         assert any(line["type"] == "result" for line in lines)
 
     assert len(captured_requests) == len(capabilities)
-    assert captured_requests[0].capability == "chat"
+    assert captured_requests[0].capability == "mastery_path"
     assert captured_requests[0].tools == ["rag"]
     assert captured_requests[0].knowledge_bases == ["demo-kb"]
     assert captured_requests[0].history_references == ["session-old"]
@@ -77,12 +77,8 @@ def test_run_command_json_mode(monkeypatch) -> None:
 def test_builtin_capability_aliases_resolve_to_canonical_names() -> None:
     runtime = DeepTutorApp()
 
-    assert runtime.resolve_capability("solve") == "deep_solve"
-    assert runtime.resolve_capability("ask") == "ask_questions"
-    assert runtime.resolve_capability("quiz") == "deep_question"
-    assert runtime.resolve_capability("research") == "deep_research"
-    assert runtime.resolve_capability("viz") == "visualize"
-    assert runtime.resolve_capability("animate") == "math_animator"
+    # Mastery-only: mastery_path is the sole registered capability.
+    assert set(BUILTIN_CAPABILITY_CLASSES) == {"mastery_path"}
     assert runtime.resolve_capability("mastery") == "mastery_path"
     with pytest.raises(ValueError, match="Unknown capability `auto`"):
         runtime.resolve_capability("auto")
@@ -194,12 +190,12 @@ def test_chat_repl_survives_invalid_utf8_input(monkeypatch) -> None:
 
 
 def test_plugin_info_includes_capability_aliases_and_availability() -> None:
-    result = runner.invoke(app, ["plugin", "info", "deep_solve"])
+    result = runner.invoke(app, ["plugin", "info", "mastery_path"])
 
     assert result.exit_code == 0, result.output
     payload = json.loads(result.output)
-    assert payload["name"] == "deep_solve"
-    assert payload["cli_aliases"] == ["solve"]
+    assert payload["name"] == "mastery_path"
+    assert payload["cli_aliases"] == ["mastery"]
     assert payload["availability"]["available"] is True
 
 

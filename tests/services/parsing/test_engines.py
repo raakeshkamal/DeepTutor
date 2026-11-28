@@ -1001,59 +1001,8 @@ def test_liteparse_leaves_foreign_image_links_alone(tmp_path, monkeypatch) -> No
     assert "![b](https://example.com/logo.png)" in rewritten
 
 
-def test_install_manager_spec_allowlist() -> None:
-    from deeptutor.services.parsing.engines._install import (
-        ENGINE_PIP_SPECS,
-        installable_engines,
-    )
-
-    # Only optional pip-backed engines are installable; built-in / external are not.
-    assert installable_engines() == {"pymupdf4llm", "markitdown", "docling", "liteparse"}
-    assert ENGINE_PIP_SPECS["markitdown"] == ["markitdown[all]>=0.1.7"]
-    assert ENGINE_PIP_SPECS["pymupdf4llm"] == ["pymupdf4llm>=1.28.2"]
-    assert ENGINE_PIP_SPECS["liteparse"] == ["liteparse>=2.14.2"]
-    assert ENGINE_PIP_SPECS["docling"] == [
-        "docling[xbrl]>=2.148.0",
-        "docling-slim[format-iwork,format-opendocument]>=2.148.0",
-    ]
-    assert "text_only" not in ENGINE_PIP_SPECS
-    assert "mineru" not in ENGINE_PIP_SPECS
-
-
-@pytest.mark.parametrize("engine", ["docling", "markitdown", "pymupdf4llm", "liteparse"])
-def test_install_manager_requires_offline_module_change(monkeypatch, engine) -> None:
-    from deeptutor.services.parsing.engines import _install
-
-    manager = _install.BackgroundJobManager()
-    monkeypatch.setattr(
-        _install.subprocess,
-        "Popen",
-        lambda *args, **kwargs: pytest.fail("mutated live environment"),
-    )
-    result = manager.start_install(engine=engine, specs=_install.ENGINE_PIP_SPECS[engine])
-    assert result["ok"] is False
-    assert f"parse-{engine} to DEEPTUTOR_EXTRAS" in result["message"]
-    assert f"python scripts/install_extras.py parse-{engine}" in result["message"]
-    assert f"deeptutor module install parser-{engine}" in result["message"]
-    assert "preserving other extras" in result["message"]
-    assert "inspect startup logs" in result["message"]
-    assert "not installed Python packages" in result["message"]
-    assert manager.status()["state"] == "idle"
-
-
-@pytest.mark.parametrize(
-    "engine,specs", [("unknown", ["docling"]), ("docling", ["untrusted-package"])]
-)
-def test_install_manager_rejects_unknown_or_changed_specs(monkeypatch, engine, specs) -> None:
-    from deeptutor.services.parsing.engines import _install
-
-    monkeypatch.setattr(
-        _install.subprocess,
-        "Popen",
-        lambda *args, **kwargs: pytest.fail("mutated live environment"),
-    )
-    result = _install.BackgroundJobManager().start_install(engine=engine, specs=specs)
-    assert result == {"ok": False, "message": "Unknown parser installation request."}
+# Mastery-only: only text_only + PyMuPDF page reading remain; no
+# pip-backed parser install manager is shipped.
 
 
 def test_model_download_job_reads_utf8_progress_bars_under_any_locale(monkeypatch) -> None:

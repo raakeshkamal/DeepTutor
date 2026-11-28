@@ -14,7 +14,9 @@ from typing import Any
 
 from deeptutor.core.tool_protocol import BaseTool, ToolDefinition, ToolPromptHints
 from deeptutor.modules.catalog import contribution_enabled
-from deeptutor.plugins.entry_points import load_entry_point_group
+def load_entry_point_group(group, coerce, log=None):
+    """Mastery-only: the plugin layer is gone, so no external tools load."""
+    return []
 from deeptutor.tools.builtin_specs import (
     BUILTIN_TOOL_NAMES,
     BUILTIN_TOOL_SPEC_BY_NAME,
@@ -76,9 +78,7 @@ class ToolRegistry:
         return tool
 
     def load_plugins(self) -> None:
-        from deeptutor.plugins.registry import PluginRegistry
-        from deeptutor.plugins.runtime import load_enabled_tools
-
+        """Mastery-only: external entry points only; no plugin packages."""
         def coerce(name, loaded):
             candidate = loaded() if inspect.isclass(loaded) else loaded
             if callable(candidate) and not isinstance(candidate, BaseTool):
@@ -89,10 +89,7 @@ class ToolRegistry:
                 return None
             return candidate
 
-        for tool in (
-            *load_entry_point_group("deeptutor.tools", coerce, log=logger),
-            *load_enabled_tools(PluginRegistry()),
-        ):
+        for tool in load_entry_point_group("deeptutor.tools", coerce, log=logger):
             if tool.name not in BUILTIN_TOOL_SPEC_BY_NAME and tool.name not in self._tools:
                 self.register(tool)
 
@@ -202,31 +199,14 @@ _default_plugin_scope: tuple[str, int, int] | None = None
 
 
 def get_tool_registry() -> ToolRegistry:
-    """Return the global ToolRegistry (creating & loading builtins on first call)."""
-    global _default_registry, _default_plugin_scope
-    from deeptutor.plugins.registry import PluginRegistry
+    """Return the global ToolRegistry (mastery-only: no plugin packages).
 
-    path = PluginRegistry().state_path
-    try:
-        stat = path.stat()
-        scope = (str(path.resolve()), stat.st_mtime_ns, stat.st_size)
-    except FileNotFoundError:
-        scope = (str(path.resolve()), 0, 0)
-    if _default_registry is None or _default_plugin_scope != scope:
-        _default_plugin_scope = scope
-        shared = (
-            [
-                tool
-                for tool in _default_registry._tools.values()
-                if getattr(tool, "provider_kind", "") == "mcp"
-                and getattr(tool, "owner", None) == "_shared"
-            ]
-            if _default_registry is not None
-            else []
-        )
+    The plugin layer was removed by the cleanup, so there is no plugin state
+    file to watch and no plugin scope to invalidate the singleton against.
+    Built-ins are loaded once from the six retained manifests.
+    """
+    global _default_registry
+    if _default_registry is None:
         _default_registry = ToolRegistry()
         _default_registry.load_builtins()
-        for tool in shared:
-            _default_registry.register(tool)
-        _default_registry.load_plugins()
     return _default_registry

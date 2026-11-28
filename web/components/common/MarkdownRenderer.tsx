@@ -7,9 +7,11 @@ import type { MarkdownRendererProps } from "./markdown-renderer-types";
 
 export type { MarkdownRendererProps } from "./markdown-renderer-types";
 
-const RichMarkdownRenderer = dynamic(() => import("./RichMarkdownRenderer"), {
-  ssr: false,
-});
+import RichMarkdownRenderer from "./RichMarkdownRenderer";
+
+// Mastery-only: question stems and options can contain fenced code. Loading
+// the rich renderer directly removes a next/dynamic boundary that never
+// resolves under the vitest harness, so those blocks render deterministically.
 
 function detectCodeContent(content: string): boolean {
   // Match any opening triple-backtick, even before the language identifier

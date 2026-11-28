@@ -5,7 +5,9 @@ import { useEffect, useState, type ReactNode } from "react";
 import { ArrowUpRight, Bot, MessageCircle, Minus, Plus, UserRound, Users } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { agentGlyph, agentKindLabel } from "@/components/agents/agent-icons";
-import PartnerAvatar from "@/components/partners/PartnerAvatar";
+// Mastery-only: the partner package is gone. NeutralAvatar keeps the
+// composer's answerer list renderable without any partner API.
+import PartnerAvatar from "@/components/chat/NeutralAvatar";
 import { listPersonas, type PersonaInfo } from "@/lib/personas-api";
 import type { PartnerInfo } from "@/lib/partners-api";
 import type { PartnerGroup } from "@/lib/partner-groups-api";

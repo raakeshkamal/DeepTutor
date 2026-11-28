@@ -6,8 +6,6 @@ import "@/features/ui-layout/modern/modern.css";
 import ThemeScript from "@/components/ThemeScript";
 import ToastViewport from "@/components/common/ToastViewport";
 import MotionProvider from "@/components/common/MotionProvider";
-import SettingsReturnTracker from "@/components/settings/SettingsReturnTracker";
-import { WorkspaceNavigation } from "@/components/workspaces/WorkspaceNavigation";
 import { AppShellProvider } from "@/context/AppShellContext";
 import { I18nClientBridge } from "@/i18n/I18nClientBridge";
 
@@ -29,7 +27,7 @@ export const viewport: Viewport = { interactiveWidget: "resizes-content" };
 
 export const metadata: Metadata = {
   title: "DeepTutor",
-  description: "Agent-native intelligent learning companion",
+  description: "Mastery-only DeepTutor",
   icons: {
     icon: [
       { url: "/brand/favicon-16x16.png", sizes: "16x16", type: "image/png" },
@@ -59,8 +57,8 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <AppShellProvider>
-          <SettingsReturnTracker />
-          <WorkspaceNavigation />
+          {/* Mastery-only: the global workspace nav probes deleted learning,
+              partner and reading indexes. It is not part of the mastery page. */}
           <MotionProvider>
             <I18nClientBridge>{children}</I18nClientBridge>
           </MotionProvider>

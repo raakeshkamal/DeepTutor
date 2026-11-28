@@ -50,10 +50,12 @@ const LazyMermaid = dynamic(() => import("@/components/Mermaid"), {
   loading: () => <MermaidLoading />,
 });
 
-const LazyCodeBlock = dynamic(() => import("./RichCodeBlock"), {
-  ssr: false,
-  loading: () => null,
-});
+import RichCodeBlock from "./RichCodeBlock";
+
+// Mastery-only: fenced code is part of a mastery question's stem and options.
+// Load it with the (already lazy) rich renderer instead of a second
+// next/dynamic boundary, which never resolves under the vitest harness.
+const LazyCodeBlock = RichCodeBlock;
 
 const GeogebraOpenCTA = dynamic(
   () => import("@/components/common/GeogebraOpenCTA"),

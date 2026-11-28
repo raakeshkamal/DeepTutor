@@ -79,9 +79,10 @@ def manifests() -> dict[str, dict[str, Any]]:
 @cache
 def source_checkout() -> bool:
     root = Path(__file__).resolve().parents[2]
-    # Docker and source archives deliberately omit Git metadata. Published
-    # wheels contain neither the project file nor the source build script.
-    return (root / "pyproject.toml").is_file() and (root / "scripts/build_modules.py").is_file()
+    # Mastery-only: the per-module wheel builder is gone, so a source
+    # checkout is identified by the project file alone. Published wheels and
+    # Docker/source archives omit it.
+    return (root / "pyproject.toml").is_file()
 
 
 def state_path() -> Path:
@@ -132,8 +133,13 @@ def installed_distributions() -> list[str]:
 
 
 def module_enabled(name: str, *, selected: dict[str, bool] | None = None) -> bool:
+    # Mastery-only: legacy call sites still probe modules that the cleanup
+    # removed (books, reading, partners, …). A probe for a module that no
+    # longer has a manifest means "feature absent", not "configuration
+    # error". require_module() still fails loudly when a caller actually
+    # tries to execute one of those features.
     if name not in manifests():
-        raise ValueError(f"Unknown module: {name}")
+        return False
     if name == "core":
         return True
     selected = selection() if selected is None else selected

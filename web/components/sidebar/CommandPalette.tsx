@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { Columns3, CornerDownLeft, MessageCircle, MessagesSquare, PenLine, Search, Settings, Users, type LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import PartnerAvatar from '@/components/partners/PartnerAvatar'
+import NeutralAvatar from '@/components/chat/NeutralAvatar'
 import { DASHBOARD_GROUPS, PERSONALIZATION_GROUPS, visibleGroups } from '@/components/space/dashboard-groups'
 import { useCapabilityFilter } from '@/features/capabilities/useCapabilityCatalog'
 import { useLearningIndex } from '@/hooks/useLearningIndex'
@@ -158,7 +158,7 @@ export function CommandPalette({
       ...partnerData.partners.map(partner => ({
         id: `partner:${partner.partner_id}`,
         label: partner.name,
-        icon: <PartnerAvatar name={partner.name} emoji={partner.emoji} image={partner.avatar} color={partner.color} size={18} />,
+        icon: <NeutralAvatar name={partner.name} emoji={partner.emoji} image={partner.avatar} color={partner.color} size={18} />,
         run: go(`/partners/${encodeURIComponent(partner.partner_id)}`),
       })),
       ...partnerData.groups.map(group => ({

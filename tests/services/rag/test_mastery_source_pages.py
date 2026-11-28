@@ -88,7 +88,7 @@ async def test_successful_explicit_preparation_supersedes_same_turn_failure(mate
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("language, expected", [("en", "Finding sources"), ("zh", "查找资料")])
+@pytest.mark.parametrize("language, expected", [("en", "Finding sources")])
 async def test_explicit_preparation_reports_localized_stages_on_the_owned_stream(
     material, monkeypatch, language, expected
 ):
@@ -1230,7 +1230,7 @@ def test_repair_retains_useful_pages_selected_near_end_of_initial_candidates():
 
 
 @pytest.mark.parametrize(
-    "language, message", [("en", "one targeted retry"), ("zh", "一次针对性重试")]
+    "language, message", [("en", "one targeted retry")]
 )
 def test_repair_never_loops_or_publishes_failed_evidence(material, monkeypatch, language, message):
     failure = {

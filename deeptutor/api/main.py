@@ -189,47 +189,12 @@ async def lifespan(app: FastAPI):
     from deeptutor.runtime.coordination import BackgroundCommandKind
 
     async def _handle_background_command(command) -> None:
-        kind = str(command.kind)
-        if kind == BackgroundCommandKind.CRON_RELOAD:
-            from deeptutor.modules.catalog import require_module
-
-            require_module("calendar")
-            from deeptutor.services.cron import get_cron_service
-
-            get_cron_service().reload()
-            return
-
-        from deeptutor.modules.catalog import require_module
-
-        require_module("partners")
-        from deeptutor.services.partners import get_partner_manager
-
-        manager = get_partner_manager()
-        manager.configure_runtime_owner(application_container.worker_id)
-        partner_id = str(command.payload.get("partner_id") or "").strip()
-        if not partner_id:
-            raise ValueError(f"Background command {kind!r} needs partner_id")
-        if kind == BackgroundCommandKind.PARTNER_START:
-            instance = await manager.start_partner(partner_id)
-            if bool(command.payload.get("persist_auto_start", True)):
-                manager.save_config(partner_id, instance.config, auto_start=True)
-            return
-        if kind == BackgroundCommandKind.PARTNER_STOP:
-            await manager.stop_partner(
-                partner_id,
-                preserve_auto_start=bool(command.payload.get("preserve_auto_start", False)),
-            )
-            return
-        if kind == BackgroundCommandKind.PARTNER_RELOAD:
-            instance = manager.get_partner(partner_id)
-            if instance is None or not instance.running:
-                return
-            config = manager.load_config(partner_id)
-            if config is not None:
-                instance.config = config
-            await manager.reload_channels(partner_id)
-            return
-        raise ValueError(f"Unknown background command kind: {kind}")
+        # Mastery-only: calendar cron reloads and partner channel commands
+        # belong to features that were removed. No background command is
+        # actionable on this branch; log and return instead of importing
+        # deleted services.
+        logger.debug("Ignoring background command %s (mastery-only build)", command.kind)
+        return
 
     cron_service = None
     try:

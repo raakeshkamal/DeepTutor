@@ -9,7 +9,7 @@
 
 import { Bot, MessagesSquare, UsersRound } from "lucide-react";
 import { agentGlyph } from "@/components/agents/agent-icons";
-import PartnerAvatar from "@/components/partners/PartnerAvatar";
+import NeutralAvatar from "@/components/chat/NeutralAvatar";
 import { usePartnerGroups } from "@/hooks/usePartnerGroups";
 import { usePartnerRoster } from "@/hooks/usePartnerRoster";
 import type { SideChatResponder } from "@/lib/side-chat";
@@ -29,7 +29,7 @@ export default function ResponderFace({
   if (responder.kind === "partner") {
     const partner = partners.find((item) => item.partner_id === responder.id);
     return (
-      <PartnerAvatar
+      <NeutralAvatar
         name={partner?.name ?? responder.name}
         emoji={partner?.emoji}
         color={partner?.color}

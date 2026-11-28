@@ -14,7 +14,7 @@ import type { ReactNode } from "react";
 import { Bot, MessagesSquare, UsersRound } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { agentGlyph, agentKindLabel } from "@/components/agents/agent-icons";
-import PartnerAvatar from "@/components/partners/PartnerAvatar";
+import NeutralAvatar from "@/components/chat/NeutralAvatar";
 import ResponderFace from "./ResponderFace";
 import { usePartnerGroups } from "@/hooks/usePartnerGroups";
 import { usePartnerRoster } from "@/hooks/usePartnerRoster";
@@ -150,7 +150,7 @@ export default function SideChatResponderMenu({
                 {partners.map((item) =>
                   row(
                     { kind: "partner", id: item.partner_id, name: item.name },
-                    <PartnerAvatar
+                    <NeutralAvatar
                       name={item.name}
                       emoji={item.emoji}
                       color={item.color}

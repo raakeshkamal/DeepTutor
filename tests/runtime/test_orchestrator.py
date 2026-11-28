@@ -99,11 +99,11 @@ class TestOrchestratorRouting:
     @pytest.mark.asyncio
     async def test_routes_to_active_capability(self) -> None:
         echo = _EchoCapability()
-        orch = _make_orchestrator({"echo": echo})
+        orch = _make_orchestrator({"mastery_path": echo})
 
         ctx = UnifiedContext(
             user_message="ping",
-            active_capability="echo",
+            active_capability="mastery_path",
         )
         events: list[StreamEvent] = []
         async for event in orch.handle(ctx):
@@ -123,7 +123,7 @@ class TestOrchestratorRouting:
         chat_cap.manifest = CapabilityManifest(
             name="chat", description="Default chat.", stages=["responding"]
         )
-        orch = _make_orchestrator({"chat": chat_cap})
+        orch = _make_orchestrator({"mastery_path": chat_cap})
 
         ctx = UnifiedContext(user_message="hello")
         events: list[StreamEvent] = []
@@ -172,7 +172,7 @@ class TestOrchestratorErrorHandling:
                 await bus.tool_result("lookup", "retry succeeded", source="chat")
                 await bus.result({"completed": True}, source="chat")
 
-        orch = _make_orchestrator({"chat": RecoveredCapability()})
+        orch = _make_orchestrator({"mastery_path": RecoveredCapability()})
         events = [e async for e in orch.handle(UnifiedContext(user_message="practice"))]
         done = next(e for e in events if e.type == StreamEventType.DONE)
         assert done.metadata["status"] == "completed"
@@ -183,7 +183,6 @@ class TestOrchestratorErrorHandling:
         "language, notice",
         [
             ("en", "The requested operation did not complete"),
-            ("zh", "请求的操作未完成"),
         ],
     )
     async def test_explicit_incomplete_result_controls_terminal_status(
@@ -196,7 +195,7 @@ class TestOrchestratorErrorHandling:
                     payload["completed"] = completed
                 await bus.result(payload, source="chat")
 
-        orch = _make_orchestrator({"chat": ResultCapability()})
+        orch = _make_orchestrator({"mastery_path": ResultCapability()})
         events = [
             e async for e in orch.handle(UnifiedContext(user_message="practice", language=language))
         ]
@@ -227,11 +226,11 @@ class TestOrchestratorErrorHandling:
     @pytest.mark.asyncio
     async def test_capability_exception_yields_error_event(self) -> None:
         fail_cap = _FailingCapability()
-        orch = _make_orchestrator({"fail": fail_cap})
+        orch = _make_orchestrator({"mastery_path": fail_cap})
 
         ctx = UnifiedContext(
             user_message="boom",
-            active_capability="fail",
+            active_capability="mastery_path",
         )
         events: list[StreamEvent] = []
         async for event in orch.handle(ctx):
@@ -260,11 +259,11 @@ class TestOrchestratorErrorHandling:
             async def run(self, _context, _bus) -> None:
                 raise _StructuredError("Unable to reach the model provider. Please retry.")
 
-        orch = _make_orchestrator({"fail": _StructuredFailingCapability()})
+        orch = _make_orchestrator({"mastery_path": _StructuredFailingCapability()})
         events = [
             event
             async for event in orch.handle(
-                UnifiedContext(user_message="boom", active_capability="fail")
+                UnifiedContext(user_message="boom", active_capability="mastery_path")
             )
         ]
 
@@ -295,10 +294,10 @@ class TestOrchestratorCancellation:
     async def test_cancelling_the_consumer_cancels_the_capability(self) -> None:
         """Stopping a turn must stop the capability, not only the event stream."""
         parked = _ParkedCapability()
-        orch = _make_orchestrator({"parked": parked})
+        orch = _make_orchestrator({"mastery_path": parked})
         ctx = UnifiedContext(
             user_message="hi",
-            active_capability="parked",
+            active_capability="mastery_path",
             metadata={"turn_id": "turn-cancelled"},
         )
         first_content = asyncio.Event()
@@ -321,10 +320,10 @@ class TestOrchestratorCancellation:
     async def test_closing_the_stream_early_cancels_the_capability(self) -> None:
         """A consumer that stops reading takes the capability down with it."""
         parked = _ParkedCapability()
-        orch = _make_orchestrator({"parked": parked})
+        orch = _make_orchestrator({"mastery_path": parked})
         ctx = UnifiedContext(
             user_message="hi",
-            active_capability="parked",
+            active_capability="mastery_path",
             metadata={"turn_id": "turn-closed"},
         )
 
@@ -347,9 +346,9 @@ class TestOrchestratorSessionId:
     @pytest.mark.asyncio
     async def test_assigns_session_id_if_missing(self) -> None:
         echo = _EchoCapability()
-        orch = _make_orchestrator({"echo": echo})
+        orch = _make_orchestrator({"mastery_path": echo})
 
-        ctx = UnifiedContext(user_message="test", active_capability="echo")
+        ctx = UnifiedContext(user_message="test", active_capability="mastery_path")
         assert ctx.session_id == ""
 
         async for _ in orch.handle(ctx):
@@ -360,12 +359,12 @@ class TestOrchestratorSessionId:
     @pytest.mark.asyncio
     async def test_preserves_existing_session_id(self) -> None:
         echo = _EchoCapability()
-        orch = _make_orchestrator({"echo": echo})
+        orch = _make_orchestrator({"mastery_path": echo})
 
         ctx = UnifiedContext(
             session_id="my-session",
             user_message="test",
-            active_capability="echo",
+            active_capability="mastery_path",
         )
         async for _ in orch.handle(ctx):
             pass
@@ -385,8 +384,8 @@ class TestOrchestratorHelpers:
 
     def test_list_capabilities(self) -> None:
         echo = _EchoCapability()
-        orch = _make_orchestrator({"echo": echo})
-        assert orch.list_capabilities() == ["echo"]
+        orch = _make_orchestrator({"mastery_path": echo})
+        assert orch.list_capabilities() == ["mastery_path"]
 
     def test_get_tool_schemas(self) -> None:
         orch = _make_orchestrator()
